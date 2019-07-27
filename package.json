@@ -1,0 +1,24 @@
+{
+  "name": "youtube-playlist-downloader",
+  "version": "1.0.0",
+  "description": "This is a tool written in JavaScript running in Node.js. With this you can download any YouTube playlist and get the mp3 files on your computer.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo 'test'"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/megabass00/youtube-playlist-downloader.git"
+  },
+  "keywords": [
+    "youtube",
+    "playlist",
+    "downloader"
+  ],
+  "author": "megabass00",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/megabass00/youtube-playlist-downloader/issues"
+  },
+  "homepage": "https://github.com/megabass00/youtube-playlist-downloader#readme"
+}
