@@ -4,7 +4,8 @@
   "description": "This is a tool written in JavaScript running in Node.js. With this you can download any YouTube playlist and get the mp3 files on your computer.",
   "main": "index.js",
   "scripts": {
-    "test": "echo 'test'"
+    "start": "node index.js $1 $2 $3 $4",
+    "lint:fix": "eslint --fix ./src"
   },
   "repository": {
     "type": "git",
@@ -20,5 +21,19 @@
   "bugs": {
     "url": "https://github.com/megabass00/youtube-playlist-downloader/issues"
   },
-  "homepage": "https://github.com/megabass00/youtube-playlist-downloader#readme"
+  "homepage": "https://github.com/megabass00/youtube-playlist-downloader#readme",
+  "dependencies": {
+    "axios": "^0.19.0",
+    "chromedriver": "^75.1.0",
+    "colors": "^1.3.3",
+    "path": "^0.12.7",
+    "selenium-webdriver": "^4.0.0-alpha.4",
+    "string-similarity": "^3.0.0"
+  },
+  "devDependencies": {
+    "eslint": "^5.16.0",
+    "eslint-config-prettier": "^6.0.0",
+    "eslint-plugin-prettier": "^3.1.0",
+    "prettier": "^1.18.2"
+  }
 }
