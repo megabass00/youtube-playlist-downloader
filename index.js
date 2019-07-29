@@ -1,5 +1,6 @@
 const getParam = (param, defaultVal = '') => {
   let paramValue = defaultVal;
+  param += '=';
   process.argv.forEach(val => {
     if (val.indexOf(param) > -1) paramValue = val.substring(param.length);
   });
@@ -9,10 +10,10 @@ const getParam = (param, defaultVal = '') => {
 require('colors');
 const YouTubeDonwloader = require('./YouTubeDownloader');
 
-var args = process.argv.slice(2);
-const minRate = parseInt(getParam('rate=', 320));
-const minSimilarity = parseFloat(getParam('similarity=', 0.35));
+const minRate = parseInt(getParam('rate', 320));
+const minSimilarity = parseInt(getParam('similarity', 0.8)) / 100;
 const downloader = new YouTubeDonwloader(minRate, minSimilarity);
+const args = process.argv.slice(2);
 
 switch (args[0]) {
   case 'playlist':
@@ -49,7 +50,7 @@ switch (args[0]) {
 
   default:
     downloader.log('Error'.bgRed, 'Sorry, enter a valid operation'.red);
-    downloader.log('Valid operations:'.yellow, '(playlist | song | export)'.cyan);
+    downloader.log('Valid operations:'.yellow, '(playlist | song | export | download)'.cyan);
 }
 
 // downloader.downloadPlaylist(PLAYLIST_ID);

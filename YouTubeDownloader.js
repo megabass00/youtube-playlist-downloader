@@ -6,12 +6,12 @@ const path = require('path');
 const fs = require('fs');
 const matcher = require('string-similarity');
 
-const YOUTUBE_APIKEY = '<your-api-googleapi-key>';
+const YOUTUBE_APIKEY = '<YOUR-YOUTUBE-APIKEY>'; // you must replace this with your YouTube Api v3 key
 const DOWNLOAD_FOLDER = 'download';
 const EXPORT_FOLDER = 'export';
 
 module.exports = class YouTubeDownloader {
-  constructor(minRate = 230, minSimilarity = 0.35) {
+  constructor(minRate = 320, minSimilarity = 0.8) {
     this.MIN_RATE = minRate;
     this.MIN_SIMILARITY = minSimilarity;
     this.printInfo();
@@ -97,9 +97,12 @@ module.exports = class YouTubeDownloader {
 
   async downloadTitles(titles, playlistId = null) {
     this.log('Downloading '.yellow + `${titles.length}`.green, 'titles');
+    let titlesNoDownloaded = [];
     for (let i = 0; i < titles.length; i++) {
-      await this.dowmloadSong(titles[i], playlistId);
+      if (!(await this.dowmloadSong(titles[i], playlistId))) titlesNoDownloaded.push(titles[i]);
     }
+    if (titlesNoDownloaded.length > 0)
+      this.log('It was not possible to download the following titles'.red, titlesNoDownloaded);
   }
 
   async dowmloadSong(title, playlistId = null) {
@@ -107,6 +110,11 @@ module.exports = class YouTubeDownloader {
     const driver = new webdriver.Builder().forBrowser('chrome').build();
     const By = webdriver.By;
     const until = webdriver.until;
+
+    await driver
+      .manage()
+      .window()
+      .minimize();
 
     await driver.get('https://my-free-mp3s.com/es');
     await driver.findElement(By.id('query')).sendKeys(title);
@@ -121,20 +129,25 @@ module.exports = class YouTubeDownloader {
       By.css('.btn.btn-primary.btn-xs.dropdown-toggle'),
     );
     const containers = await driver.findElements(By.css('.list-group-item'));
+    const links = await driver.findElements(By.css('.info-link'));
+
     if (!results || results.length === 0 || !infoButtons || infoButtons.length === 0) {
       this.log('No results founded for'.red, title.yellow);
       driver.close();
-      return;
+      return false;
     }
 
     this.log(`${results.length} results founded for`, title);
-    this.log('Searching the best link for download...', ' ');
+    this.log('Searching the best link for download...'.gray, ' ');
     await driver.executeScript('arguments[0].scrollIntoView(true);', infoButtons[0]);
 
     let data = [];
     for (let i = 0; i < infoButtons.length; i++) {
       await driver.executeScript('arguments[0].click();', infoButtons[i]);
-      this._sleep(2000); //TODO esperar hasta que el resultado este mostrado
+      await driver.wait(until.elementIsVisible(links[i]));
+      await driver
+        .wait(() => links[i].getText().then(value => value && value.length > 3), 10000)
+        .catch(() => this.log('Warning'.red, 'No was possible get info of link'.yellow));
 
       const link = await results[i].getAttribute('href');
       const duration = parseInt(await results[i].getAttribute('data-duration'));
@@ -149,19 +162,18 @@ module.exports = class YouTubeDownloader {
       data.push({ link, rate, duration, size, title: title.trim() });
     }
 
-    // this.log('Data', data);
-    // data = _getFakeData();
     const bestResult = this._getBestResult(data, title);
     if (!bestResult) {
       this.log('Sorry!!! It not was possible download link for'.red, title.yellow);
       driver.close();
-      return;
+      return false;
     }
     this.log('Downloading best result'.yellow, bestResult);
     const downloadFolder = playlistId ? DOWNLOAD_FOLDER + '/' + playlistId : DOWNLOAD_FOLDER;
-    this._downloadFile(bestResult.link, title, downloadFolder);
+    this._downloadFile(bestResult.link, this._capitalize(title), downloadFolder);
 
     driver.close();
+    return true;
   }
 
   _sleep(miliseconds) {
@@ -188,8 +200,8 @@ module.exports = class YouTubeDownloader {
   }
 
   _getBestResult(results, originalTitle) {
-    const titles = results.map(elem => elem.title);
-    const similarity = matcher.findBestMatch(originalTitle, titles);
+    const titles = results.map(elem => elem.title.toUpperCase());
+    const similarity = matcher.findBestMatch(originalTitle.toUpperCase(), titles);
     results = results.map((res, i) => ({
       title: res.title,
       link: res.link,
@@ -246,45 +258,18 @@ module.exports = class YouTubeDownloader {
       .catch(error => this.log('Error getting titles', error));
   }
 
+  _capitalize(str) {
+    str = str.split(' ');
+    for (var i = 0, x = str.length; i < x; i++) {
+      str[i] = str[i][0].toUpperCase() + str[i].substr(1).toLowerCase();
+    }
+    return str.join(' ');
+  }
+
   log(key, value) {
     if (!key) key = 'NO KEY'.red;
     if (!value) value = 'UNDEFINED'.red;
     if (typeof value === 'object') value = JSON.stringify(value, null, 3).green;
     console.log(key.yellow, value.green);
-  }
-
-  _getFakeData() {
-    return [
-      {
-        url: 'https://s.playx.fun/stream/JvWBZB:MCg2rB',
-        size: '8.8 MB',
-        rate: '320 kbps',
-        duration: 220,
-      },
-      {
-        url: 'https://s.playx.fun/stream/huWBZB:vHg2rB',
-        size: '10.1 MB',
-        rate: '320 kbps',
-        duration: 251,
-      },
-      {
-        url: 'https://s.playx.fun/stream/ZFRuuH:GPhxhB',
-        size: '8.9 MB',
-        rate: '324 kbps',
-        duration: 218,
-      },
-      {
-        url: 'https://s.playx.fun/stream/AfN2M:yu1bpB',
-        size: '8.9 MB',
-        rate: '323 kbps',
-        duration: 220,
-      },
-      {
-        url: 'https://s.playx.fun/stream/-buePM:gaaZu',
-        size: '7.6 MB',
-        rate: '281 kbps',
-        duration: 217,
-      },
-    ];
   }
 };
