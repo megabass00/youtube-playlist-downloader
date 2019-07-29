@@ -23,7 +23,7 @@ You must run the application from a console and you can use several operations:
 * **playlist**: you must indicate a YouTube playlist ID and the titles will be retrieved from the YouTube API and will be searched on my-free-mp3s. Once the results for each of the titles have been analyzed, the result that best suits the specified parameters (rate and similarity) will be downloaded.
 * **song**: you must indicate the title of a song in quotes (it is important) and it will be searched, analyzed and downloaded in the same way as with the playlist operation.
 * **export**: you must indicate a YouTube playlist ID to export the titles that will be saved in a json file.
-* **download**: you must indicate the path to a json file that contains an array of titles (you can use a file generated with the import operation) which will be downloaded in the same way as with the playlist operation.
+* **download**: you must indicate the path to a json file that contains an array of titles (you can use a file generated with the export operation) which will be downloaded in the same way as with the playlist operation.
 
 To any of these operations you can add the following parameters options:
 * **rate**: indicates the minimum rate (in kbps) that will be accepted when analyzing the search results. Results with lower rates than indicated will be discarded. If this parameter is not specified, it will be set with a value of 320 kbps.
