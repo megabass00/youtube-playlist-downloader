@@ -19,10 +19,19 @@ require('colors');
 const YouTubeDonwloader = require('./YouTubeDownloader');
 
 const minRate = parseInt(getParam('rate', 320));
-const minSimilarity = parseInt(getParam('similarity', 0.8)) / 100;
+const minSimilarity = parseInt(getParam('similarity', 80)) / 100;
+const engine = getParam('engine', 'myfreemp3');
 const noWindow = checkOption('no-window', false);
-const minimizeWindow = checkOption('minimize', true);
-const downloader = new YouTubeDonwloader(minRate, minSimilarity, noWindow, minimizeWindow);
+const minimizeWindow = checkOption('minimize', false);
+const alwaysDownloadFiles = checkOption('alwaysDownloadFiles', false);
+const downloader = new YouTubeDonwloader({
+  engine,
+  minRate,
+  minSimilarity,
+  noWindow,
+  minimizeWindow,
+  alwaysDownloadFiles,
+});
 const args = process.argv.slice(2);
 
 switch (args[0]) {

@@ -6,27 +6,36 @@ const path = require('path');
 const fs = require('fs');
 const matcher = require('string-similarity');
 const readlineSync = require('readline-sync');
+const By = webdriver.By;
+const until = webdriver.until;
 
-const YOUTUBE_APIKEY = '<YOUR-YOUTUBE-APIKEY>'; // you must replace this with your YouTube Api v3 key
+// const YOUTUBE_APIKEY = '<YOUR-YOUTUBE-APIKEY>'; // you must replace this with your YouTube Api v3 key
+const YOUTUBE_APIKEY = 'AIzaSyC9LwtvczTv6gx34F8Sywzx7t2-w5KuZA4';
 const DOWNLOAD_FOLDER = 'download';
 const EXPORT_FOLDER = 'export';
+const PROXY_ADDRESS = '131.161.239.3';
 
 module.exports = class YouTubeDownloader {
-  constructor(minRate = 320, minSimilarity = 0.8, noWindow = true, minimizeWindow = false) {
-    this.MIN_RATE = minRate;
-    this.MIN_SIMILARITY = minSimilarity;
-    this.NO_WINDOW = noWindow;
-    this.MINIMIZE_WINDOW = minimizeWindow;
-    this.ALWAYS_DOWNLOAD_FILE = true; // undefined;
+  constructor({ engine, minRate, minSimilarity, noWindow, minimizeWindow, alwaysDownloadFiles }) {
+    this.engine = engine || 'myfreemp3';
+    this.minRate = minRate || 320;
+    this.minSimilarity = minSimilarity || 80;
+    this.noWindow = typeof noWindow === 'undefined' ? true : noWindow;
+    this.minimizeWindow = typeof minimizeWindow === 'undefined' ? false : minimizeWindow;
+    this.alwaysDownloadFiles = typeof alwaysDownloadFiles === 'undefined' ? true : alwaysDownloadFiles; // undefined;
     this.printInfo();
   }
 
   printInfo() {
     console.clear();
     this.log(this.logo().red, ' ');
-    this.log('Initialized '.cyan + 'YouTubeDownloader'.green + ' with values'.cyan, ' ');
-    this.log('Minimum Rate Size:'.gray, `${this.MIN_RATE} kbps`.cyan);
-    this.log('Minimum Title Similiarity:'.gray, `${this.MIN_SIMILARITY * 100}%`.cyan);
+    this.log('Initialized '.cyan + 'YouTubeDownloader'.green + ' with options:'.cyan, ' ');
+    this.log('Engine:'.gray, `${this.engine.toUpperCase()}`.cyan);
+    this.log('Mode:'.gray, `${this.noWindow ? 'Background' : 'Foreground'}`.cyan);
+    this.log('Minimum Rate Size:'.gray, `${this.minRate} kbps`.cyan);
+    this.log('Minimum Title Similiarity:'.gray, `${this.minSimilarity * 100}%`.cyan);
+    this.log('Minimize Window:'.gray, `${this.minimizeWindow ? 'Yes' : 'No'}`.cyan);
+    this.log('Always Download Files:'.gray, `${this.alwaysDownloadFiles ? 'Yes' : 'No'}`.cyan);
     this.log(' ', ' ');
   }
 
@@ -111,34 +120,82 @@ module.exports = class YouTubeDownloader {
     this.log('Downloading song', title);
 
     const mustDownload = await this._mustDownloadFile(title);
-    console.log(mustDownload);
     if (!mustDownload) {
       this.log(title.yellow + ' was discard'.red, ' ');
       return;
     }
 
+    switch (this.engine) {
+      case 'myfreemp3':
+        this.downloadSongWithMyfreemp3(title, playlistId);
+        break;
+      case 'zippyshare':
+        this.downloadSongWithZippyshare(title, playlistId);
+        break;
+      default:
+        this.downloadSongWithMyfreemp3(title, playlistId);
+        break;
+    }
+  }
+
+  async _getDriver(proxyAddress) {
     let driver;
-    if (this.NO_WINDOW) {
+    var prefs = new webdriver.logging.Preferences();
+    prefs.setLevel(webdriver.logging.Type.BROWSER, webdriver.logging.Level.ALL);
+    if (this.noWindow) {
       this.log('Initializing webdriver in '.gray + 'background'.yellow + ' mode'.gray, ' ');
-      let chrome = require('selenium-webdriver/chrome');
-      const options = new chrome.Options().addArguments('--no-startup-window').headless();
-      driver = new webdriver.Builder()
-        .forBrowser('chrome')
-        .setChromeOptions(options)
-        .build();
+      const chrome = require('selenium-webdriver/chrome');
+      let options = new chrome.Options()
+        .addArguments('--no-startup-window')
+        .addArguments('--disable-web-security')
+        .headless();
+
+      if (proxyAddress) {
+        this.log('Setting proxy in driver with IP'.gray, proxyAddress.yellow);
+        let proxy = require('selenium-webdriver/proxy');
+        driver = new webdriver.Builder()
+          .forBrowser('chrome')
+          .setChromeOptions(options)
+          .setLoggingPrefs(prefs)
+          .setProxy(proxy.manual({ http: proxyAddress }))
+          .build();
+      } else {
+        driver = new webdriver.Builder()
+          .forBrowser('chrome')
+          .setChromeOptions(options)
+          .setLoggingPrefs(prefs)
+          .build();
+      }
     } else {
       this.log('Initializing webdriver in '.gray + 'foreground'.yellow + ' mode'.gray, ' ');
-      driver = new webdriver.Builder().forBrowser('chrome').build();
+      if (proxyAddress) {
+        this.log('Setting proxy in driver with IP'.gray, proxyAddress.yellow);
+        let proxy = require('selenium-webdriver/proxy');
+        driver = new webdriver.Builder()
+          .forBrowser('chrome')
+          .setLoggingPrefs(prefs)
+          .setProxy(proxy.manual({ http: proxyAddress }))
+          .build();
+      } else {
+        driver = new webdriver.Builder()
+          .forBrowser('chrome')
+          .setLoggingPrefs(prefs)
+          .build();
+      }
     }
-    const By = webdriver.By;
-    const until = webdriver.until;
 
-    if (!this.NO_WINDOW && this.MINIMIZE_WINDOW) {
+    if (!this.noWindow && this.minimizeWindow) {
       await driver
         .manage()
         .window()
         .minimize();
     }
+
+    return driver;
+  }
+
+  async downloadSongWithMyfreemp3(title, playlistId = null) {
+    const driver = await this._getDriver();
 
     await driver.get('https://my-free-mp3s.com/es');
     await driver.findElement(By.id('query')).sendKeys(title);
@@ -198,6 +255,13 @@ module.exports = class YouTubeDownloader {
     return true;
   }
 
+  async downloadSongWithZippyshare(title, playlistId = null) {
+    const driver = await this._getDriver(PROXY_ADDRESS);
+
+    await driver.get('http://zippyshare.com/');
+    this._sleep(10000);
+  }
+
   _fileExists(pathToFile) {
     return fs.existsSync(pathToFile);
   }
@@ -235,7 +299,7 @@ module.exports = class YouTubeDownloader {
       similarity: similarity.ratings[i].rating,
     }));
 
-    results = results.filter(res => res.similarity > this.MIN_SIMILARITY);
+    results = results.filter(res => res.similarity > this.minSimilarity);
     if (!results.length) {
       this.log('No titles similarity with original title'.red, originalTitle.yellow);
       return null;
@@ -261,16 +325,19 @@ module.exports = class YouTubeDownloader {
           }
         }
       } else {
-        if (!bestResult || res.rate >= this.MIN_RATE) bestResult = res;
+        if (!bestResult || res.rate >= this.minRate) bestResult = res;
       }
     }
     return bestResult;
   }
 
   async _mustDownloadFile(title, playlistId) {
-    if (typeof this.ALWAYS_DOWNLOAD_FILE !== 'undefined') return this.ALWAYS_DOWNLOAD_FILE;
+    console.log('1', this.alwaysDownloadFiles);
+    if (typeof this.alwaysDownloadFiles !== 'undefined' && this.alwaysDownloadFiles) return true;
+    console.log('2');
     const downloadFolder = playlistId ? DOWNLOAD_FOLDER + '/' + playlistId : DOWNLOAD_FOLDER;
     const pathToFile = path.resolve(downloadFolder, title + '.mp3');
+
     if (this._fileExists(pathToFile)) {
       const options = ['Yes', 'No', 'Always', 'Never'];
       const index = readlineSync.keyInSelect(
@@ -285,11 +352,11 @@ module.exports = class YouTubeDownloader {
           return false;
 
         case 2: // Always
-          this.ALWAYS_DOWNLOAD_FILE = true;
+          this.alwaysDownloadFiles = true;
           return true;
 
         case 3: // Never
-          this.ALWAYS_DOWNLOAD_FILE = false;
+          this.alwaysDownloadFiles = false;
           return false;
 
         default:

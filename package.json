@@ -4,7 +4,7 @@
   "description": "This is a tool written in JavaScript running in Node.js. With this you can download any YouTube playlist and get the mp3 files on your computer.",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js $1 $2 $3 $4",
+    "start": "node index.js",
     "lint:fix": "eslint --fix ./src"
   },
   "repository": {
