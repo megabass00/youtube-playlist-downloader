@@ -11,9 +11,11 @@ const DOWNLOAD_FOLDER = 'download';
 const EXPORT_FOLDER = 'export';
 
 module.exports = class YouTubeDownloader {
-  constructor(minRate = 320, minSimilarity = 0.8) {
+  constructor(minRate = 320, minSimilarity = 0.8, noWindow = true, minimizeWindow = false) {
     this.MIN_RATE = minRate;
     this.MIN_SIMILARITY = minSimilarity;
+    this.NO_WINDOW = noWindow;
+    this.MINIMIZE_WINDOW = minimizeWindow;
     this.printInfo();
   }
 
@@ -82,9 +84,7 @@ module.exports = class YouTubeDownloader {
         .then(response => {
           response.data.items.map(item => titles.push(item.snippet.title));
           this.log('Adding', response.data.items.length + ' results');
-          return response.data.nextPageToken
-            ? fnData(playlistId, response.data.nextPageToken)
-            : titles;
+          return response.data.nextPageToken ? fnData(playlistId, response.data.nextPageToken) : titles;
         });
     };
 
@@ -107,27 +107,38 @@ module.exports = class YouTubeDownloader {
 
   async dowmloadSong(title, playlistId = null) {
     this.log('Downloading song', title);
-    const driver = new webdriver.Builder().forBrowser('chrome').build();
+    let driver;
+    if (this.NO_WINDOW) {
+      this.log('Initializing webdriver in '.gray + 'background'.yellow + ' mode'.gray, ' ');
+      let chrome = require('selenium-webdriver/chrome');
+      const options = new chrome.Options().addArguments('--no-startup-window').headless();
+      driver = new webdriver.Builder()
+        .forBrowser('chrome')
+        .setChromeOptions(options)
+        .build();
+    } else {
+      this.log('Initializing webdriver in '.gray + 'foreground'.yellow + ' mode'.gray, ' ');
+      driver = new webdriver.Builder().forBrowser('chrome').build();
+    }
+
     const By = webdriver.By;
     const until = webdriver.until;
 
-    await driver
-      .manage()
-      .window()
-      .minimize();
+    if (!this.NO_WINDOW && this.MINIMIZE_WINDOW) {
+      await driver
+        .manage()
+        .window()
+        .minimize();
+    }
 
     await driver.get('https://my-free-mp3s.com/es');
     await driver.findElement(By.id('query')).sendKeys(title);
     await driver
-      .findElement(
-        By.css('body > div.wrapper > div > div > div.input-group > span:nth-child(3) > button'),
-      )
+      .findElement(By.css('body > div.wrapper > div > div > div.input-group > span:nth-child(3) > button'))
       .click();
     await driver.wait(until.elementLocated(By.css('#result > div.list-group > li:nth-child(1)')));
     const results = await driver.findElements(By.css('.info-link'));
-    const infoButtons = await driver.findElements(
-      By.css('.btn.btn-primary.btn-xs.dropdown-toggle'),
-    );
+    const infoButtons = await driver.findElements(By.css('.btn.btn-primary.btn-xs.dropdown-toggle'));
     const containers = await driver.findElements(By.css('.list-group-item'));
     const links = await driver.findElements(By.css('.info-link'));
 
@@ -159,7 +170,9 @@ module.exports = class YouTubeDownloader {
       for (let k = 0; k < navis.length; k++) {
         title += ' ' + (await navis[k].getText());
       }
-      data.push({ link, rate, duration, size, title: title.trim() });
+      if (title && title !== '') {
+        data.push({ link, rate, duration, size, title: title.trim() });
+      }
     }
 
     const bestResult = this._getBestResult(data, title);
@@ -182,9 +195,7 @@ module.exports = class YouTubeDownloader {
   }
 
   _getSize(str) {
-    return str && str.length > 3 && str.indexOf(',')
-      ? parseFloat(str.split(',')[0].replace(' MB', ''))
-      : 0;
+    return str && str.length > 3 && str.indexOf(',') ? parseFloat(str.split(',')[0].replace(' MB', '')) : 0;
   }
 
   _getRate(str) {

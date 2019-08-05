@@ -7,12 +7,22 @@ const getParam = (param, defaultVal = '') => {
   return paramValue;
 };
 
+const checkOption = (param, defaultVal = false) => {
+  let paramValue = defaultVal;
+  process.argv.forEach(val => {
+    if (val.indexOf(param) > -1) paramValue = true;
+  });
+  return paramValue;
+};
+
 require('colors');
 const YouTubeDonwloader = require('./YouTubeDownloader');
 
 const minRate = parseInt(getParam('rate', 320));
 const minSimilarity = parseInt(getParam('similarity', 0.8)) / 100;
-const downloader = new YouTubeDonwloader(minRate, minSimilarity);
+const noWindow = checkOption('no-window', false);
+const minimizeWindow = checkOption('minimize', true);
+const downloader = new YouTubeDonwloader(minRate, minSimilarity, noWindow, minimizeWindow);
 const args = process.argv.slice(2);
 
 switch (args[0]) {
@@ -52,8 +62,3 @@ switch (args[0]) {
     downloader.log('Error'.bgRed, 'Sorry, enter a valid operation'.red);
     downloader.log('Valid operations:'.yellow, '(playlist | song | export | download)'.cyan);
 }
-
-// downloader.downloadPlaylist(PLAYLIST_ID);
-// downloader.dowmloadSong('Boytronic ‎– You [Original 12" 1983');
-// downloader.dowmloadSong('MEGABEAT es imposible no puede ser.wmv');
-// downloader.downloadFile('https://s.playx.fun/JvWBZB:MCg2rB', 'prueba');
