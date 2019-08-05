@@ -151,7 +151,12 @@ module.exports = class YouTubeDownloader {
   async _getDriver(proxyAddress) {
     let driver;
     var prefs = new webdriver.logging.Preferences();
-    prefs.setLevel(webdriver.logging.Type.BROWSER, webdriver.logging.Level.ALL);
+    prefs.setLevel(webdriver.logging.Type.BROWSER, webdriver.logging.Level.OFF);
+    prefs.setLevel(webdriver.logging.Type.DRIVER, webdriver.logging.Level.OFF);
+    prefs.setLevel(webdriver.logging.Type.PERFORMANCE, webdriver.logging.Level.OFF);
+    prefs.setLevel(webdriver.logging.Type.SERVER, webdriver.logging.Level.OFF);
+    prefs.setLevel(webdriver.logging.Type.CLIENT, webdriver.logging.Level.OFF);
+
     if (this.noWindow) {
       this.log('Initializing webdriver in '.gray + 'background'.yellow + ' mode'.gray, ' ');
       const chrome = require('selenium-webdriver/chrome');
