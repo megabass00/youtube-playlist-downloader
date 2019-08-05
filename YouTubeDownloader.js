@@ -1,11 +1,20 @@
-require('colors');
 require('chromedriver');
+const colors = require('colors');
 const webdriver = require('selenium-webdriver');
 const axios = require('axios');
 const path = require('path');
 const fs = require('fs');
 const matcher = require('string-similarity');
 const readlineSync = require('readline-sync');
+const progress = require('cli-progress');
+// const progressBar = new progress.Bar({
+//   barCompleteChar: '#',
+//   barIncompleteChar: '.',
+//   fps: 5,
+//   stream: process.stdout,
+//   barsize: 65,
+//   position: 'center',
+// });
 const By = webdriver.By;
 const until = webdriver.until;
 
@@ -110,15 +119,16 @@ module.exports = class YouTubeDownloader {
     this.log('Downloading '.yellow + `${titles.length}`.green, 'titles');
     let titlesNoDownloaded = [];
     for (let i = 0; i < titles.length; i++) {
-      if (!(await this.dowmloadSong(titles[i], playlistId))) titlesNoDownloaded.push(titles[i]);
+      const success = await this.dowmloadSong(titles[i], playlistId);
+      if (!success) titlesNoDownloaded.push(titles[i]);
     }
+
     if (titlesNoDownloaded.length > 0)
       this.log('It was not possible to download the following titles'.red, titlesNoDownloaded);
   }
 
   async dowmloadSong(title, playlistId = null) {
     this.log('Downloading song', title);
-
     const mustDownload = await this._mustDownloadFile(title);
     if (!mustDownload) {
       this.log(title.yellow + ' was discard'.red, ' ');
@@ -127,13 +137,13 @@ module.exports = class YouTubeDownloader {
 
     switch (this.engine) {
       case 'myfreemp3':
-        this.downloadSongWithMyfreemp3(title, playlistId);
+        await this.downloadSongWithMyfreemp3(title, playlistId);
         break;
       case 'zippyshare':
-        this.downloadSongWithZippyshare(title, playlistId);
+        await this.downloadSongWithZippyshare(title, playlistId);
         break;
       default:
-        this.downloadSongWithMyfreemp3(title, playlistId);
+        await this.downloadSongWithMyfreemp3(title, playlistId);
         break;
     }
   }
@@ -250,7 +260,8 @@ module.exports = class YouTubeDownloader {
 
     this.log('Downloading best result'.yellow, bestResult);
     const downloadFolder = playlistId ? DOWNLOAD_FOLDER + '/' + playlistId : DOWNLOAD_FOLDER;
-    this._downloadFile(bestResult.link, this._capitalize(title), downloadFolder);
+    await this._downloadFile(bestResult.link, this._capitalize(title), downloadFolder);
+
     driver.close();
     return true;
   }
@@ -332,9 +343,7 @@ module.exports = class YouTubeDownloader {
   }
 
   async _mustDownloadFile(title, playlistId) {
-    console.log('1', this.alwaysDownloadFiles);
     if (typeof this.alwaysDownloadFiles !== 'undefined' && this.alwaysDownloadFiles) return true;
-    console.log('2');
     const downloadFolder = playlistId ? DOWNLOAD_FOLDER + '/' + playlistId : DOWNLOAD_FOLDER;
     const pathToFile = path.resolve(downloadFolder, title + '.mp3');
 
@@ -365,20 +374,34 @@ module.exports = class YouTubeDownloader {
     }
   }
 
-  _downloadFile(url, title, downloadFolder = '') {
+  async _downloadFile(url, title, downloadFolder = '') {
     const localPath = path.resolve(__dirname, downloadFolder);
     if (!fs.existsSync(localPath)) fs.mkdirSync(localPath);
     const pathToFile = path.resolve(localPath, title + '.mp3');
-    this.log('Saving '.yellow + title.cyan + ' in\n'.yellow, pathToFile.cyan);
 
-    axios
+    const preset = {
+      format: colors.green(' {bar}') + colors.yellow(' {percentage}% | ETA: {eta}s | {value}/{total} Mb'),
+      barCompleteChar: '\u2588',
+      barIncompleteChar: '\u2591',
+    };
+    const progressBar = new progress.Bar({ barsize: 70 }, preset);
+
+    return axios
       .get(url, { responseType: 'stream' })
       .then(response => {
+        const totalBytes = response.headers['content-length'] / 1048576;
+        progressBar.start(totalBytes.toFixed(1), 0);
         const stream = fs.createWriteStream(pathToFile);
-        response.data.pipe(stream);
-        this.log('File saved OK'.green, ' ');
+        response.data.on('data', chunk => progressBar.increment(chunk.length / 1048576));
+        response.data.pipe(stream).on('finish', () => {
+          progressBar.stop();
+          this.log('\n\nSaved '.yellow + title.cyan + ' in\n'.yellow, pathToFile.cyan);
+        });
       })
-      .catch(error => this.log('Error getting titles', error));
+      .catch(error => {
+        progressBar.stop();
+        this.log('Error downloading file'.red, error.red);
+      });
   }
 
   _capitalize(str) {

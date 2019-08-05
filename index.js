@@ -23,7 +23,7 @@ const minSimilarity = parseInt(getParam('similarity', 80)) / 100;
 const engine = getParam('engine', 'myfreemp3');
 const noWindow = checkOption('no-window', false);
 const minimizeWindow = checkOption('minimize', false);
-const alwaysDownloadFiles = checkOption('alwaysDownloadFiles', false);
+const alwaysDownloadFiles = checkOption('alwaysDownloadFiles', true);
 const downloader = new YouTubeDonwloader({
   engine,
   minRate,
