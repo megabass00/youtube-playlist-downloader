@@ -5,6 +5,7 @@ const axios = require('axios');
 const path = require('path');
 const fs = require('fs');
 const matcher = require('string-similarity');
+const readlineSync = require('readline-sync');
 
 const YOUTUBE_APIKEY = '<YOUR-YOUTUBE-APIKEY>'; // you must replace this with your YouTube Api v3 key
 const DOWNLOAD_FOLDER = 'download';
@@ -16,6 +17,7 @@ module.exports = class YouTubeDownloader {
     this.MIN_SIMILARITY = minSimilarity;
     this.NO_WINDOW = noWindow;
     this.MINIMIZE_WINDOW = minimizeWindow;
+    this.ALWAYS_DOWNLOAD_FILE = true; // undefined;
     this.printInfo();
   }
 
@@ -107,6 +109,14 @@ module.exports = class YouTubeDownloader {
 
   async dowmloadSong(title, playlistId = null) {
     this.log('Downloading song', title);
+
+    const mustDownload = await this._mustDownloadFile(title);
+    console.log(mustDownload);
+    if (!mustDownload) {
+      this.log(title.yellow + ' was discard'.red, ' ');
+      return;
+    }
+
     let driver;
     if (this.NO_WINDOW) {
       this.log('Initializing webdriver in '.gray + 'background'.yellow + ' mode'.gray, ' ');
@@ -120,7 +130,6 @@ module.exports = class YouTubeDownloader {
       this.log('Initializing webdriver in '.gray + 'foreground'.yellow + ' mode'.gray, ' ');
       driver = new webdriver.Builder().forBrowser('chrome').build();
     }
-
     const By = webdriver.By;
     const until = webdriver.until;
 
@@ -181,12 +190,16 @@ module.exports = class YouTubeDownloader {
       driver.close();
       return false;
     }
+
     this.log('Downloading best result'.yellow, bestResult);
     const downloadFolder = playlistId ? DOWNLOAD_FOLDER + '/' + playlistId : DOWNLOAD_FOLDER;
     this._downloadFile(bestResult.link, this._capitalize(title), downloadFolder);
-
     driver.close();
     return true;
+  }
+
+  _fileExists(pathToFile) {
+    return fs.existsSync(pathToFile);
   }
 
   _sleep(miliseconds) {
@@ -254,6 +267,37 @@ module.exports = class YouTubeDownloader {
     return bestResult;
   }
 
+  async _mustDownloadFile(title, playlistId) {
+    if (typeof this.ALWAYS_DOWNLOAD_FILE !== 'undefined') return this.ALWAYS_DOWNLOAD_FILE;
+    const downloadFolder = playlistId ? DOWNLOAD_FOLDER + '/' + playlistId : DOWNLOAD_FOLDER;
+    const pathToFile = path.resolve(downloadFolder, title + '.mp3');
+    if (this._fileExists(pathToFile)) {
+      const options = ['Yes', 'No', 'Always', 'Never'];
+      const index = readlineSync.keyInSelect(
+        options,
+        'This title is present in downloads folder,\nyou wish download again?'.red,
+      );
+      switch (index) {
+        case 0: // Yes
+          return true;
+
+        case 1: // No
+          return false;
+
+        case 2: // Always
+          this.ALWAYS_DOWNLOAD_FILE = true;
+          return true;
+
+        case 3: // Never
+          this.ALWAYS_DOWNLOAD_FILE = false;
+          return false;
+
+        default:
+          return true;
+      }
+    }
+  }
+
   _downloadFile(url, title, downloadFolder = '') {
     const localPath = path.resolve(__dirname, downloadFolder);
     if (!fs.existsSync(localPath)) fs.mkdirSync(localPath);
@@ -263,7 +307,8 @@ module.exports = class YouTubeDownloader {
     axios
       .get(url, { responseType: 'stream' })
       .then(response => {
-        response.data.pipe(fs.createWriteStream(pathToFile));
+        const stream = fs.createWriteStream(pathToFile);
+        response.data.pipe(stream);
         this.log('File saved OK'.green, ' ');
       })
       .catch(error => this.log('Error getting titles', error));
