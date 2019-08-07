@@ -133,6 +133,9 @@ module.exports = class YouTubeDownloader {
       case 'zippyshare':
         await this.downloadSongWithZippyshare(title, playlistId);
         break;
+      case 'youtube':
+        await this.downloadSongWithYoutube(title, playlistId);
+        break;
       default:
         await this.downloadSongWithMyfreemp3(title, playlistId);
         break;
@@ -268,6 +271,54 @@ module.exports = class YouTubeDownloader {
 
     await driver.get('http://zippyshare.com/');
     this._sleep(10000);
+  }
+
+  async downloadSongWithYoutube(title, playlistId = null) {
+    const driver = await this._getDriver();
+    this.minSimilarity = 100;
+
+    await driver.get('https://mpgun.com/');
+    await driver.wait(until.elementLocated(By.css('#about > div > div:nth-child(2) > div > h3:nth-child(5)')));
+    await driver.findElement(By.css('#autocomplte')).sendKeys(title);
+    await driver.findElement(By.css('.btn.btn-primary.btn-xlg.ng-binding')).click();
+    await driver.wait(until.elementLocated(By.css('.addon.ng-scope')));
+    const results = await driver.findElements(By.css('.addon.ng-scope > ul > li'));
+
+    if (!results || results.length === 0) {
+      this.log('No results founded for'.red, title.yellow);
+      driver.close();
+      return false;
+    }
+
+    this.log(`${results.length} results founded for`, title);
+    this.log('Searching the best link for download...'.gray, ' ');
+
+    for (let i = 0; i < results.length; i++) {
+      const result = results[i];
+      await driver.executeScript('arguments[0].click();', result);
+
+      const tmpTitle = await result.findElement(By.css('div > div > div.legend-info.col-sm-10 > p')).getText();
+      if (tmpTitle && tmpTitle.trim() === title.trim()) {
+        // const navbar = await driver.findElement(By.css('.navbar-collapse'));
+        // await driver.executeScript("arguments[0].setAttribute('style','visibility:hidden;');", navbar);
+        const mp3Button = await result.findElement(
+          By.css('div > div > div.legend-info.col-sm-10 > div > a:nth-child(2)'),
+        );
+        await driver.executeScript('arguments[0].click();', mp3Button);
+        await driver.wait(until.urlContains('youtube-to-mp3.html'));
+        const link = await driver.findElement(By.id('mp3')).getAttribute('href');
+        this.log('Downloading best link'.yellow, link.gray);
+
+        const downloadFolder = playlistId ? DOWNLOAD_FOLDER + '/' + playlistId : DOWNLOAD_FOLDER;
+        await this._downloadFile(link, this._capitalize(title), downloadFolder);
+        return;
+      }
+      this.log(tmpTitle.yellow, ' was discard'.red);
+    }
+
+    this.log('Sorry!!! It not was possible download link for'.red, title.yellow);
+    driver.close();
+    return false;
   }
 
   _fileExists(pathToFile) {
