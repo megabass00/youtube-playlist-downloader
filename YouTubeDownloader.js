@@ -7,22 +7,13 @@ const fs = require('fs');
 const matcher = require('string-similarity');
 const readlineSync = require('readline-sync');
 const progress = require('cli-progress');
-// const progressBar = new progress.Bar({
-//   barCompleteChar: '#',
-//   barIncompleteChar: '.',
-//   fps: 5,
-//   stream: process.stdout,
-//   barsize: 65,
-//   position: 'center',
-// });
 const By = webdriver.By;
 const until = webdriver.until;
 
-// const YOUTUBE_APIKEY = '<YOUR-YOUTUBE-APIKEY>'; // you must replace this with your YouTube Api v3 key
-const YOUTUBE_APIKEY = 'AIzaSyC9LwtvczTv6gx34F8Sywzx7t2-w5KuZA4';
+const YOUTUBE_APIKEY = '<YOUR-YOUTUBE-APIKEY>'; // you must replace this with your YouTube Api v3 key
 const DOWNLOAD_FOLDER = 'download';
 const EXPORT_FOLDER = 'export';
-const PROXY_ADDRESS = '131.161.239.3';
+const PROXY_ADDRESS = '131.161.239.3'; // you must replace with your vpn ip address
 
 module.exports = class YouTubeDownloader {
   constructor({ engine, minRate, minSimilarity, noWindow, minimizeWindow, alwaysDownloadFiles }) {
@@ -213,6 +204,7 @@ module.exports = class YouTubeDownloader {
     const driver = await this._getDriver();
 
     await driver.get('https://my-free-mp3s.com/es');
+    await driver.wait(until.elementLocated(By.id('AO-hit')));
     await driver.findElement(By.id('query')).sendKeys(title);
     await driver
       .findElement(By.css('body > div.wrapper > div > div > div.input-group > span:nth-child(3) > button'))
