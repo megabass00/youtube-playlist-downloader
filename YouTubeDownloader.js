@@ -13,16 +13,16 @@ const until = webdriver.until;
 const YOUTUBE_APIKEY = '<YOUR-YOUTUBE-APIKEY>'; // you must replace this with your YouTube Api v3 key
 const DOWNLOAD_FOLDER = 'download';
 const EXPORT_FOLDER = 'export';
-const PROXY_ADDRESS = '131.161.239.3'; // you must replace with your vpn ip address
 
 module.exports = class YouTubeDownloader {
-  constructor({ engine, minRate, minSimilarity, noWindow, minimizeWindow, alwaysDownloadFiles }) {
+  constructor({ engine, minRate, minSimilarity, noWindow, minimizeWindow, alwaysDownloadFiles, proxyAddress }) {
     this.engine = engine || 'myfreemp3';
     this.minRate = minRate || 320;
     this.minSimilarity = minSimilarity || 80;
     this.noWindow = typeof noWindow === 'undefined' ? true : noWindow;
     this.minimizeWindow = typeof minimizeWindow === 'undefined' ? false : minimizeWindow;
     this.alwaysDownloadFiles = typeof alwaysDownloadFiles === 'undefined' ? true : alwaysDownloadFiles; // undefined;
+    this.proxyAddress = proxyAddress || null;
     this.printInfo();
   }
 
@@ -36,6 +36,7 @@ module.exports = class YouTubeDownloader {
     this.log('Minimum Title Similiarity:'.gray, `${this.minSimilarity * 100}%`.cyan);
     this.log('Minimize Window:'.gray, `${this.minimizeWindow ? 'Yes' : 'No'}`.cyan);
     this.log('Always Download Files:'.gray, `${this.alwaysDownloadFiles ? 'Yes' : 'No'}`.cyan);
+    this.log('Proxy Address:'.gray, this.proxyAddress ? `${this.proxyAddress}`.cyan : 'No specifieed'.red);
     this.log(' ', ' ');
   }
 
@@ -151,9 +152,9 @@ module.exports = class YouTubeDownloader {
     prefs.setLevel(webdriver.logging.Type.SERVER, webdriver.logging.Level.OFF);
     prefs.setLevel(webdriver.logging.Type.CLIENT, webdriver.logging.Level.OFF);
 
+    const chrome = require('selenium-webdriver/chrome');
     if (this.noWindow) {
       this.log('Initializing webdriver in '.gray + 'background'.yellow + ' mode'.gray, ' ');
-      const chrome = require('selenium-webdriver/chrome');
       let options = new chrome.Options()
         .addArguments('--no-startup-window')
         .addArguments('--disable-web-security')
@@ -161,12 +162,11 @@ module.exports = class YouTubeDownloader {
 
       if (proxyAddress) {
         this.log('Setting proxy in driver with IP'.gray, proxyAddress.yellow);
-        let proxy = require('selenium-webdriver/proxy');
+        let option = new chrome.Options().addArguments(`--proxy-server=http://${proxyAddress}`);
         driver = new webdriver.Builder()
           .forBrowser('chrome')
-          .setChromeOptions(options)
+          .setChromeOptions(option)
           .setLoggingPrefs(prefs)
-          .setProxy(proxy.manual({ http: proxyAddress }))
           .build();
       } else {
         driver = new webdriver.Builder()
@@ -178,12 +178,12 @@ module.exports = class YouTubeDownloader {
     } else {
       this.log('Initializing webdriver in '.gray + 'foreground'.yellow + ' mode'.gray, ' ');
       if (proxyAddress) {
-        this.log('Setting proxy in driver with IP'.gray, proxyAddress.yellow);
-        let proxy = require('selenium-webdriver/proxy');
+        this.log('Setting proxy in driver with IP'.gray, proxyAddress.red);
+        let option = new chrome.Options().addArguments(`--proxy-server=http://${proxyAddress}`);
         driver = new webdriver.Builder()
           .forBrowser('chrome')
+          .setChromeOptions(option)
           .setLoggingPrefs(prefs)
-          .setProxy(proxy.manual({ http: proxyAddress }))
           .build();
       } else {
         driver = new webdriver.Builder()
@@ -267,10 +267,15 @@ module.exports = class YouTubeDownloader {
   }
 
   async downloadSongWithZippyshare(title, playlistId = null) {
-    const driver = await this._getDriver(PROXY_ADDRESS);
+    const proxyIp = await this._getProxy();
+    this.log('Proxy address'.yellow, proxyIp.green);
+    const driver = await this._getDriver(proxyIp);
+    return false;
 
-    await driver.get('http://zippyshare.com/');
+    await driver.get('https://zippyshare.com/');
     this._sleep(10000);
+    driver.close();
+    return false;
   }
 
   async downloadSongWithYoutube(title, playlistId = null) {
@@ -390,6 +395,34 @@ module.exports = class YouTubeDownloader {
     return bestResult;
   }
 
+  async _getProxy() {
+    if (this.proxyAddress) return this.proxyAddress;
+
+    const fnProxy = async () => {
+      const res = await axios.get('http://pubproxy.com/api/proxy');
+      const { data } = await res;
+      return data.data[0];
+    };
+
+    this.log('Getting free public proxy...'.yellow);
+    let success = false;
+    let proxyData;
+    while (!success) {
+      proxyData = await fnProxy();
+      if (proxyData && proxyData.support.https == 1) {
+        success = true;
+      } else {
+        this._sleep(1000); // wait one secont between requests
+      }
+    }
+    // this.log('Revored proxy', proxyData);
+    this.log(
+      `Revored proxy with IP ${proxyData.ipPort} and ${proxyData.speed}/10 speed from ${proxyData.country} and supports cookies=${proxyData.support.cookies}`,
+    );
+    this.proxyAddress = proxyData.ipPort;
+    return proxyData.ipPort;
+  }
+
   async _mustDownloadFile(title, playlistId) {
     if (typeof this.alwaysDownloadFiles !== 'undefined' && this.alwaysDownloadFiles) return true;
     const downloadFolder = playlistId ? DOWNLOAD_FOLDER + '/' + playlistId : DOWNLOAD_FOLDER;
@@ -460,7 +493,7 @@ module.exports = class YouTubeDownloader {
     return str.join(' ');
   }
 
-  log(key, value) {
+  log(key, value = ' ') {
     if (!key) key = 'NO KEY'.red;
     if (!value) value = 'UNDEFINED'.red;
     if (typeof value === 'object') value = JSON.stringify(value, null, 3).green;

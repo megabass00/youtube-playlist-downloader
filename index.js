@@ -21,9 +21,11 @@ const YouTubeDonwloader = require('./YouTubeDownloader');
 const minRate = parseInt(getParam('rate', 320));
 const minSimilarity = parseInt(getParam('similarity', 80)) / 100;
 const engine = getParam('engine', 'myfreemp3');
+const proxyAddress = getParam('proxy', false);
 const noWindow = checkOption('no-window', false);
 const minimizeWindow = checkOption('minimize', false);
 const alwaysDownloadFiles = checkOption('alwaysDownloadFiles', true);
+
 const downloader = new YouTubeDonwloader({
   engine,
   minRate,
@@ -31,6 +33,7 @@ const downloader = new YouTubeDonwloader({
   noWindow,
   minimizeWindow,
   alwaysDownloadFiles,
+  proxyAddress,
 });
 const args = process.argv.slice(2);
 
