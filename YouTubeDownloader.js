@@ -11,8 +11,7 @@ const isPortReachable = require('is-port-reachable');
 const By = webdriver.By;
 const until = webdriver.until;
 
-// const YOUTUBE_APIKEY = '<YOUR-YOUTUBE-APIKEY>'; // you must replace this with your YouTube Api v3 key
-const YOUTUBE_APIKEY = 'AIzaSyC9LwtvczTv6gx34F8Sywzx7t2-w5KuZA4';
+const YOUTUBE_APIKEY = '<YOUR-YOUTUBE-APIKEY>'; // you must replace this with your YouTube Api v3 key
 const DOWNLOAD_FOLDER = 'download';
 const EXPORT_FOLDER = 'export';
 
@@ -274,21 +273,52 @@ module.exports = class YouTubeDownloader {
     const driver = await this._getDriver();
     // this.log('Initilized ZIPPYSHARE engine with proxy'.yellow, proxyIp.green);
 
+    title = 'Dario Nuñez';
     await driver.get('https://www.zippysharedjs.com/');
     await driver.wait(until.elementLocated(By.id('search')));
     await driver.findElement(By.id('search')).sendKeys(title);
     await driver.findElement(By.css('#search-form > div > button')).click();
-    await driver.wait(until.elementLocated(By.css('#result > div.list-group > li:nth-child(1)')));
-    const results = await driver.findElements(By.css('.info-link'));
-    const infoButtons = await driver.findElements(By.css('.btn.btn-primary.btn-xs.dropdown-toggle'));
-    const containers = await driver.findElements(By.css('.list-group-item'));
-    const links = await driver.findElements(By.css('.info-link'));
+    await driver.wait(until.elementLocated(By.css('.gsc-resultsbox-visible')));
 
-    if (!results || results.length === 0 || !infoButtons || infoButtons.length === 0) {
+    const results = await driver.findElements(By.css('.gs-webResult.gs-result'));
+    // const infoButtons = await driver.findElements(By.css('.btn.btn-primary.btn-xs.dropdown-toggle'));
+    // const containers = await driver.findElements(By.css('.list-group-item'));
+    // const links = await driver.findElements(By.css('.info-link'));
+
+    if (!results || results.length === 0) {
       this.log('No results founded for'.red, title.yellow);
       driver.close();
       return false;
     }
+
+    this.log(`${results.length} results founded for`, title);
+    this.log('Searching the best link for download...'.gray, ' ');
+    // await driver.executeScript('arguments[0].scrollIntoView(true);', infoButtons[0]);
+
+    let data = [];
+    for (let i = 0; i < results.length; i++) {
+      await driver.executeScript('arguments[0].click();', results[i]);
+      // await driver.wait(until.elementIsVisible(links[i]));
+      // await driver
+      //   .wait(() => links[i].getText().then(value => value && value.length > 3), 10000)
+      //   .catch(() => this.log('Warning'.red, 'No was possible get info of link'.yellow));
+
+      const link = await results[i].getAttribute('href');
+      const duration = parseInt(await results[i].getAttribute('data-duration'));
+      const text = await results[i].getText();
+      const rate = this._getRate(text);
+      const size = this._getSize(text);
+      const navis = await containers[i].findElements(By.id('navi'));
+      let title = '';
+      for (let k = 0; k < navis.length; k++) {
+        title += ' ' + (await navis[k].getText());
+      }
+      if (title && title !== '') {
+        data.push({ link, rate, duration, size, title: title.trim() });
+      }
+    }
+
+    const bestResult = this._getBestResult(data, title);
 
     this._sleep(100000);
     // driver.close();
