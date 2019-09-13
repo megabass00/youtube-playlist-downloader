@@ -7,10 +7,12 @@ const fs = require('fs');
 const matcher = require('string-similarity');
 const readlineSync = require('readline-sync');
 const progress = require('cli-progress');
+const isPortReachable = require('is-port-reachable');
 const By = webdriver.By;
 const until = webdriver.until;
 
-const YOUTUBE_APIKEY = '<YOUR-YOUTUBE-APIKEY>'; // you must replace this with your YouTube Api v3 key
+// const YOUTUBE_APIKEY = '<YOUR-YOUTUBE-APIKEY>'; // you must replace this with your YouTube Api v3 key
+const YOUTUBE_APIKEY = 'AIzaSyC9LwtvczTv6gx34F8Sywzx7t2-w5KuZA4';
 const DOWNLOAD_FOLDER = 'download';
 const EXPORT_FOLDER = 'export';
 
@@ -36,7 +38,7 @@ module.exports = class YouTubeDownloader {
     this.log('Minimum Title Similiarity:'.gray, `${this.minSimilarity * 100}%`.cyan);
     this.log('Minimize Window:'.gray, `${this.minimizeWindow ? 'Yes' : 'No'}`.cyan);
     this.log('Always Download Files:'.gray, `${this.alwaysDownloadFiles ? 'Yes' : 'No'}`.cyan);
-    this.log('Proxy Address:'.gray, this.proxyAddress ? `${this.proxyAddress}`.cyan : 'No specifieed'.red);
+    this.log('Proxy Address:'.gray, this.proxyAddress ? `${this.proxyAddress}`.cyan : 'No specified'.red);
     this.log(' ', ' ');
   }
 
@@ -267,15 +269,30 @@ module.exports = class YouTubeDownloader {
   }
 
   async downloadSongWithZippyshare(title, playlistId = null) {
-    const proxyIp = await this._getProxy();
-    this.log('Proxy address'.yellow, proxyIp.green);
-    const driver = await this._getDriver(proxyIp);
-    return false;
+    // const proxyIp = await this._getProxy();
+    // const driver = await this._getDriver(proxyIp);
+    const driver = await this._getDriver();
+    // this.log('Initilized ZIPPYSHARE engine with proxy'.yellow, proxyIp.green);
 
-    await driver.get('https://zippyshare.com/');
-    this._sleep(10000);
-    driver.close();
-    return false;
+    await driver.get('https://www.zippysharedjs.com/');
+    await driver.wait(until.elementLocated(By.id('search')));
+    await driver.findElement(By.id('search')).sendKeys(title);
+    await driver.findElement(By.css('#search-form > div > button')).click();
+    await driver.wait(until.elementLocated(By.css('#result > div.list-group > li:nth-child(1)')));
+    const results = await driver.findElements(By.css('.info-link'));
+    const infoButtons = await driver.findElements(By.css('.btn.btn-primary.btn-xs.dropdown-toggle'));
+    const containers = await driver.findElements(By.css('.list-group-item'));
+    const links = await driver.findElements(By.css('.info-link'));
+
+    if (!results || results.length === 0 || !infoButtons || infoButtons.length === 0) {
+      this.log('No results founded for'.red, title.yellow);
+      driver.close();
+      return false;
+    }
+
+    this._sleep(100000);
+    // driver.close();
+    // return false;
   }
 
   async downloadSongWithYoutube(title, playlistId = null) {
@@ -395,11 +412,24 @@ module.exports = class YouTubeDownloader {
     return bestResult;
   }
 
+  async _isValidProxy(proxyAddress) {
+    if (!proxyAddress || proxyAddress.indexOf(':') < 0) return false;
+    const parts = proxyAddress.split(':');
+    this.log(`Checking proxy ${parts[0]} in port ${parts[1]}...`.green);
+    return await isPortReachable(parts[1], { host: parts[0] });
+  }
+
   async _getProxy() {
-    if (this.proxyAddress) return this.proxyAddress;
+    if (this.proxyAddress) {
+      if (await this._isValidProxy(this.proxyAddress)) return this.proxyAddress;
+      this.log(`Proxy address ${this.proxyAddress} is not valid`.red);
+    }
+    return;
 
     const fnProxy = async () => {
-      const res = await axios.get('http://pubproxy.com/api/proxy');
+      const res = await axios
+        .get('http://pubproxy.com/api/proxy')
+        .catch(err => this.log('There was an error while getting a proxy'.red, err.Error));
       const { data } = await res;
       return data.data[0];
     };
@@ -412,10 +442,10 @@ module.exports = class YouTubeDownloader {
       if (proxyData && proxyData.support.https == 1) {
         success = true;
       } else {
-        this._sleep(1000); // wait one secont between requests
+        this._sleep(1000); // wait one secont between requests to avoid locks
       }
     }
-    // this.log('Revored proxy', proxyData);
+    this.log('Revored proxy', proxyData);
     this.log(
       `Revored proxy with IP ${proxyData.ipPort} and ${proxyData.speed}/10 speed from ${proxyData.country} and supports cookies=${proxyData.support.cookies}`,
     );
