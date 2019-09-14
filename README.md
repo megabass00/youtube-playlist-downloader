@@ -39,7 +39,7 @@ To any of these operations you can add the following parameters options:
 
 Also you can specify several options to the operations:
 
-- **no-window**: if you pass this option the downloader no shows any screen and all work will do on background.
+- **no-window**: if you pass this option the downloader no shows any screen and all work will do on background (Basically you don't wish see the tool job :stuck_out_tongue_winking_eye:).
 - **alwaysDownloadFiles**: if this option is present, the tool will download all files, even if they are already downloaded, if it is not present each file will be checked before downloading.
 - **minimize**: this option is similar to the 'no-window' option but the work is done in the foreground. If this option is present, the browser window will open but will automatically be minimized.
 
@@ -71,4 +71,7 @@ npm start song "title-of-the-song" rate=250 no-window
 
 # Download a playlist in background mode and similarity to 90% and it will download all files even if they are already downloaded
 npm start playlist <your-playlist-ID> alwaysDownloadFiles similarity=90
+
+# Download single song with zippyshare engine in background mode with minimun rate to 320 kpbs across custom proxy
+npm start song "title-of-the-song" rate=320 engine=zippyshare proxy=<your-proxy-address> no-window
 ```
