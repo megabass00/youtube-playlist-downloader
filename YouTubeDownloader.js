@@ -163,10 +163,16 @@ module.exports = class YouTubeDownloader {
 
       if (proxyAddress) {
         this.log('Setting proxy in driver with IP'.gray, proxyAddress.yellow);
-        let option = new chrome.Options().addArguments(`--proxy-server=http://${proxyAddress}`);
+        // let options = new chrome.Options().addArguments(`--proxy-server=http://${proxyAddress}`);
+        const downloadFolder = path.resolve(__dirname, DOWNLOAD_FOLDER);
+        this.log('Download folder', downloadFolder);
+        options = options
+          .addArguments(`--proxy-server=http://${proxyAddress}`)
+          .addArguments('download.default_directory', `"${downloadFolder}"`);
         driver = new webdriver.Builder()
           .forBrowser('chrome')
-          .setChromeOptions(option)
+          // .setChromeOptions(options)
+          .withCapabilities(options)
           .setLoggingPrefs(prefs)
           .build();
       } else {
@@ -180,10 +186,23 @@ module.exports = class YouTubeDownloader {
       this.log('Initializing webdriver in '.gray + 'foreground'.yellow + ' mode'.gray, ' ');
       if (proxyAddress) {
         this.log('Setting proxy in driver with IP'.gray, proxyAddress.red);
-        let option = new chrome.Options().addArguments(`--proxy-server=http://${proxyAddress}`);
+        const options = options.addArguments(`--proxy-server=http://${proxyAddress}`);
+        const downloadFolder = path.resolve(__dirname, DOWNLOAD_FOLDER);
+        this.log('Download folder', downloadFolder);
+
+        let capabilities = webdriver.Capabilities.chrome();
+        const chromeOptions = {
+          prefs: { 'download.default_directory': downloadFolder },
+        };
+        this.log(options, chromeOptions);
+        capabilities.set('chromeOptions', chromeOptions);
+        // const options = new chrome.Options()
+        //   .addArguments(`--proxy-server=http://${proxyAddress}`)
+        //   .addArguments('download.default_directory', `"${downloadFolder}"`);
         driver = new webdriver.Builder()
           .forBrowser('chrome')
-          .setChromeOptions(option)
+          .withCapabilities(capabilities)
+          .setChromeOptions(options)
           .setLoggingPrefs(prefs)
           .build();
       } else {
@@ -268,12 +287,8 @@ module.exports = class YouTubeDownloader {
   }
 
   async downloadSongWithZippyshare(title, playlistId = null) {
-    // const proxyIp = await this._getProxy();
-    // const driver = await this._getDriver(proxyIp);
     const driver = await this._getDriver();
-    // this.log('Initilized ZIPPYSHARE engine with proxy'.yellow, proxyIp.green);
 
-    title = 'Dario Nuñez';
     await driver.get('https://www.zippysharedjs.com/');
     await driver.wait(until.elementLocated(By.id('search')));
     await driver.findElement(By.id('search')).sendKeys(title);
@@ -281,10 +296,6 @@ module.exports = class YouTubeDownloader {
     await driver.wait(until.elementLocated(By.css('.gsc-resultsbox-visible')));
 
     const results = await driver.findElements(By.css('.gs-webResult.gs-result'));
-    // const infoButtons = await driver.findElements(By.css('.btn.btn-primary.btn-xs.dropdown-toggle'));
-    // const containers = await driver.findElements(By.css('.list-group-item'));
-    // const links = await driver.findElements(By.css('.info-link'));
-
     if (!results || results.length === 0) {
       this.log('No results founded for'.red, title.yellow);
       driver.close();
@@ -293,36 +304,62 @@ module.exports = class YouTubeDownloader {
 
     this.log(`${results.length} results founded for`, title);
     this.log('Searching the best link for download...'.gray, ' ');
-    // await driver.executeScript('arguments[0].scrollIntoView(true);', infoButtons[0]);
 
     let data = [];
     for (let i = 0; i < results.length; i++) {
       await driver.executeScript('arguments[0].click();', results[i]);
-      // await driver.wait(until.elementIsVisible(links[i]));
-      // await driver
-      //   .wait(() => links[i].getText().then(value => value && value.length > 3), 10000)
-      //   .catch(() => this.log('Warning'.red, 'No was possible get info of link'.yellow));
+      const infoText = await results[i]
+        .findElement(
+          By.css('div.gsc-table-result > div.gsc-table-cell-snippet-close > div.gs-bidi-start-align.gs-snippet'),
+        )
+        .getText();
+      const sizeText = infoText.substring(infoText.indexOf('Size: ') + 6, infoText.indexOf(' MB'));
+      const size = parseFloat(sizeText);
+      const title =
+        infoText.indexOf('.mp3') > -1
+          ? infoText.substring(infoText.indexOf('Name: ') + 6, infoText.lastIndexOf('.mp3'))
+          : infoText.indexOf(',mp3') > -1
+          ? infoText.substring(infoText.indexOf('Name: ') + 6, infoText.lastIndexOf(',mp3'))
+          : infoText.indexOf('Size: ') > -1
+          ? infoText.substring(infoText.indexOf('Name: ') + 6, infoText.lastIndexOf('Size: ') - 1)
+          : '???';
 
-      const link = await results[i].getAttribute('href');
-      const duration = parseInt(await results[i].getAttribute('data-duration'));
-      const text = await results[i].getText();
-      const rate = this._getRate(text);
-      const size = this._getSize(text);
-      const navis = await containers[i].findElements(By.id('navi'));
-      let title = '';
-      for (let k = 0; k < navis.length; k++) {
-        title += ' ' + (await navis[k].getText());
-      }
+      // const infoTitle = await results[i].findElement(By.css('div.gsc-thumbnail-inside > div > a')).getText();
+      // const title = infoTitle.substring(0, infoText.indexOf('.mp3'));
+      const link = await results[i].findElement(By.css('div.gsc-thumbnail-inside > div > a')).getAttribute('href');
+      // this.log('infoText', infoText);
+      // this.log('title'.bgBlue, title.white);
+      // this.log('link', link);
+      // this.log('info', infoText);
+      const rate = 320.0;
+      const duration = 0.0;
+
       if (title && title !== '') {
         data.push({ link, rate, duration, size, title: title.trim() });
       }
     }
-
     const bestResult = this._getBestResult(data, title);
+    this.log('data', data);
+    if (!bestResult) {
+      this.log('Sorry!!! It not was possible download link for'.red, title.yellow);
+      driver.close();
+      return false;
+    }
 
-    this._sleep(100000);
-    // driver.close();
-    // return false;
+    this.log('Downloading best result'.yellow, bestResult);
+    driver.close();
+
+    const proxyIp = await this._getProxy();
+    const proxy = await this._getDriver(proxyIp);
+    this.log('Downloading across proxy'.yellow, proxyIp.green);
+    await proxy.get(bestResult.link);
+    await proxy.wait(until.elementsLocated(By.css('.download')));
+    await proxy.findElement(By.css('.download')).click();
+    // const downloadFolder = playlistId ? DOWNLOAD_FOLDER + '/' + playlistId : DOWNLOAD_FOLDER;
+    // await this._downloadFile(bestResult.link, this._capitalize(title), downloadFolder);
+
+    proxy.close();
+    return true;
   }
 
   async downloadSongWithYoutube(title, playlistId = null) {
@@ -410,6 +447,14 @@ module.exports = class YouTubeDownloader {
       similarity: similarity.ratings[i].rating,
     }));
 
+    // const coincidences = results.filter(res => {
+    //   this.log('orig', originalTitle.toUpperCase());
+    //   this.log('res', res.title.toUpperCase());
+    //   this.log('ok', res.title.toUpperCase().includes(originalTitle.toUpperCase()));
+    //   return res.title.toUpperCase().includes(originalTitle.toUpperCase());
+    // });
+    // this.log('coincidences', coincidences);
+
     results = results.filter(res => res.similarity > this.minSimilarity);
     if (!results.length) {
       this.log('No titles similarity with original title'.red, originalTitle.yellow);
@@ -454,7 +499,6 @@ module.exports = class YouTubeDownloader {
       if (await this._isValidProxy(this.proxyAddress)) return this.proxyAddress;
       this.log(`Proxy address ${this.proxyAddress} is not valid`.red);
     }
-    return;
 
     const fnProxy = async () => {
       const res = await axios
@@ -469,9 +513,10 @@ module.exports = class YouTubeDownloader {
     let proxyData;
     while (!success) {
       proxyData = await fnProxy();
-      if (proxyData && proxyData.support.https == 1) {
+      if (proxyData && proxyData.support.https == 1 && (await this._isValidProxy(proxyData.ipPort))) {
         success = true;
       } else {
+        this.log('Discard proxy'.red, proxyData.ipPort.yellow);
         this._sleep(1000); // wait one secont between requests to avoid locks
       }
     }
@@ -481,6 +526,14 @@ module.exports = class YouTubeDownloader {
     );
     this.proxyAddress = proxyData.ipPort;
     return proxyData.ipPort;
+  }
+
+  async _getSanitizedProxy(proxyAddress = false) {
+    if (!proxyAddress) {
+      proxyAddress = await this._getProxy();
+    }
+    proxyAddress = proxyAddress.split(':');
+    return { host: proxyAddress[0], port: proxyAddress[1] };
   }
 
   async _mustDownloadFile(title, playlistId) {
