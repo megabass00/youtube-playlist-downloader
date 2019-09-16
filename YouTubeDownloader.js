@@ -163,16 +163,13 @@ module.exports = class YouTubeDownloader {
 
       if (proxyAddress) {
         this.log('Setting proxy in driver with IP'.gray, proxyAddress.yellow);
-        // let options = new chrome.Options().addArguments(`--proxy-server=http://${proxyAddress}`);
         const downloadFolder = path.resolve(__dirname, DOWNLOAD_FOLDER);
-        this.log('Download folder', downloadFolder);
-        options = options
+        const moreOptions = options
           .addArguments(`--proxy-server=http://${proxyAddress}`)
-          .addArguments('download.default_directory', `"${downloadFolder}"`);
+          .setUserPreferences({ 'download.default_directory': downloadFolder, 'safebrowsing.enabled': false });
         driver = new webdriver.Builder()
           .forBrowser('chrome')
-          // .setChromeOptions(options)
-          .withCapabilities(options)
+          .setChromeOptions(moreOptions)
           .setLoggingPrefs(prefs)
           .build();
       } else {
@@ -186,22 +183,12 @@ module.exports = class YouTubeDownloader {
       this.log('Initializing webdriver in '.gray + 'foreground'.yellow + ' mode'.gray, ' ');
       if (proxyAddress) {
         this.log('Setting proxy in driver with IP'.gray, proxyAddress.red);
-        const options = options.addArguments(`--proxy-server=http://${proxyAddress}`);
         const downloadFolder = path.resolve(__dirname, DOWNLOAD_FOLDER);
-        this.log('Download folder', downloadFolder);
-
-        let capabilities = webdriver.Capabilities.chrome();
-        const chromeOptions = {
-          prefs: { 'download.default_directory': downloadFolder },
-        };
-        this.log(options, chromeOptions);
-        capabilities.set('chromeOptions', chromeOptions);
-        // const options = new chrome.Options()
-        //   .addArguments(`--proxy-server=http://${proxyAddress}`)
-        //   .addArguments('download.default_directory', `"${downloadFolder}"`);
+        const options = new chrome.Options()
+          .addArguments(`--proxy-server=http://${proxyAddress}`)
+          .setUserPreferences({ 'download.default_directory': downloadFolder, 'safebrowsing.enabled': false });
         driver = new webdriver.Builder()
           .forBrowser('chrome')
-          .withCapabilities(capabilities)
           .setChromeOptions(options)
           .setLoggingPrefs(prefs)
           .build();
@@ -327,10 +314,6 @@ module.exports = class YouTubeDownloader {
       // const infoTitle = await results[i].findElement(By.css('div.gsc-thumbnail-inside > div > a')).getText();
       // const title = infoTitle.substring(0, infoText.indexOf('.mp3'));
       const link = await results[i].findElement(By.css('div.gsc-thumbnail-inside > div > a')).getAttribute('href');
-      // this.log('infoText', infoText);
-      // this.log('title'.bgBlue, title.white);
-      // this.log('link', link);
-      // this.log('info', infoText);
       const rate = 320.0;
       const duration = 0.0;
 
@@ -339,7 +322,6 @@ module.exports = class YouTubeDownloader {
       }
     }
     const bestResult = this._getBestResult(data, title);
-    this.log('data', data);
     if (!bestResult) {
       this.log('Sorry!!! It not was possible download link for'.red, title.yellow);
       driver.close();
@@ -351,15 +333,16 @@ module.exports = class YouTubeDownloader {
 
     const proxyIp = await this._getProxy();
     const proxy = await this._getDriver(proxyIp);
-    this.log('Downloading across proxy'.yellow, proxyIp.green);
     await proxy.get(bestResult.link);
     await proxy.wait(until.elementsLocated(By.css('.download')));
     await proxy.findElement(By.css('.download')).click();
-    // const downloadFolder = playlistId ? DOWNLOAD_FOLDER + '/' + playlistId : DOWNLOAD_FOLDER;
-    // await this._downloadFile(bestResult.link, this._capitalize(title), downloadFolder);
+    this.log('Downloading '.gray + bestResult.title.yellow + ' across proxy'.gray, proxyIp.green);
+
+    const pathToFile = this._getDownloadPath(title, playlistId);
+    const downloadResult = this._fileIsDownloaded(pathToFile);
 
     proxy.close();
-    return true;
+    return downloadResult;
   }
 
   async downloadSongWithYoutube(title, playlistId = null) {
@@ -412,6 +395,34 @@ module.exports = class YouTubeDownloader {
 
   _fileExists(pathToFile) {
     return fs.existsSync(pathToFile);
+  }
+
+  _fileIsDownloaded(pathToFile) {
+    const timeOffset = 150000; // maximum time to wait in miliseconds
+    const timeLimit = new Date().getTime() + timeOffset;
+    const baseName = path.basename(pathToFile);
+
+    let isDownloaded = false;
+    let timeExceded = false;
+    if (!this._fileExists(pathToFile)) this.log(`Waiting until ${baseName} is downloaded...`.gray);
+    while (!isDownloaded && !timeExceded) {
+      if (this._fileExists(pathToFile)) {
+        isDownloaded = true;
+        this.log(`Checking ${baseName} file`.gray, 'File is downloaded'.green);
+      } else {
+        this._sleep(1000);
+      }
+      timeExceded = timeLimit < new Date().getTime();
+      if (timeExceded) this.log(`Checking ${baseName} file`.gray, `Timeout exceded (${timeOffset / 1000} sec)`.red);
+    }
+    if (isDownloaded) {
+      this.log('\n\nSaved '.yellow + baseName.cyan + ' in\n'.yellow, pathToFile.cyan);
+    } else {
+      const error = timeLimit ? 'Timeout was exceded' : 'It was not possible download file';
+      this.log('Error downloading file'.red, error.red);
+    }
+
+    return isDownloaded;
   }
 
   _sleep(miliseconds) {
@@ -502,7 +513,7 @@ module.exports = class YouTubeDownloader {
 
     const fnProxy = async () => {
       const res = await axios
-        .get('http://pubproxy.com/api/proxy')
+        .get('http://pubproxy.com/api/proxy?level=elite&speed=25&https=true') // only retrieve proxies with elite level and https support
         .catch(err => this.log('There was an error while getting a proxy'.red, err.Error));
       const { data } = await res;
       return data.data[0];
@@ -522,7 +533,7 @@ module.exports = class YouTubeDownloader {
     }
     this.log('Revored proxy', proxyData);
     this.log(
-      `Revored proxy with IP ${proxyData.ipPort} and ${proxyData.speed}/10 speed from ${proxyData.country} and supports cookies=${proxyData.support.cookies}`,
+      `Revored proxy with IP ${proxyData.ipPort} and speed=${proxyData.speed} from ${proxyData.country} and supports cookies=${proxyData.support.cookies}`,
     );
     this.proxyAddress = proxyData.ipPort;
     return proxyData.ipPort;
@@ -598,6 +609,13 @@ module.exports = class YouTubeDownloader {
       });
   }
 
+  _getDownloadPath(title, playlistId = null) {
+    const downloadFolder = playlistId ? DOWNLOAD_FOLDER + '/' + playlistId : DOWNLOAD_FOLDER;
+    const localPath = path.resolve(__dirname, downloadFolder);
+    const pathToFile = path.resolve(localPath, title + '.mp3');
+    return pathToFile;
+  }
+
   _capitalize(str) {
     str = str.split(' ');
     for (var i = 0, x = str.length; i < x; i++) {
@@ -608,8 +626,9 @@ module.exports = class YouTubeDownloader {
 
   log(key, value = ' ') {
     if (!key) key = 'NO KEY'.red;
-    if (!value) value = 'UNDEFINED'.red;
     if (typeof value === 'object') value = JSON.stringify(value, null, 3).green;
+    if (typeof value === 'boolean') value = !value ? 'false' : 'true';
+    if (!value) value = 'UNDEFINED'.red;
     console.log(key.yellow, value.green);
   }
 };
