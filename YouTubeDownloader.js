@@ -11,7 +11,7 @@ const isPortReachable = require('is-port-reachable');
 const By = webdriver.By;
 const until = webdriver.until;
 
-const YOUTUBE_APIKEY = '<YOUR-YOUTUBE-APIKEY>'; // you must replace this with your YouTube Api v3 key
+const YOUTUBE_APIKEY = 'AIzaSyC9LwtvczTv6gx34F8Sywzx7t2-w5KuZA4'; // you must replace this with your YouTube Api v3 key
 const DOWNLOAD_FOLDER = 'download';
 const EXPORT_FOLDER = 'export';
 
@@ -19,7 +19,7 @@ module.exports = class YouTubeDownloader {
   constructor({ engine, minRate, minSimilarity, noWindow, minimizeWindow, alwaysDownloadFiles, proxyAddress }) {
     this.engine = engine || 'myfreemp3';
     this.minRate = minRate || 320;
-    this.minSimilarity = minSimilarity || 80;
+    this.minSimilarity = minSimilarity || 60;
     this.noWindow = typeof noWindow === 'undefined' ? true : noWindow;
     this.minimizeWindow = typeof minimizeWindow === 'undefined' ? false : minimizeWindow;
     this.alwaysDownloadFiles = typeof alwaysDownloadFiles === 'undefined' ? true : alwaysDownloadFiles; // undefined;
@@ -109,9 +109,11 @@ module.exports = class YouTubeDownloader {
   }
 
   async downloadTitles(titles, playlistId = null) {
+    this.log('----------'.grey);
     this.log('Downloading '.yellow + `${titles.length}`.green, 'titles');
     let titlesNoDownloaded = [];
     for (let i = 0; i < titles.length; i++) {
+      // TODO: it need to be fixed, there are titles be added to no download files list when was been downloaded successfully
       const success = await this.dowmloadSong(titles[i], playlistId);
       if (!success) titlesNoDownloaded.push(titles[i]);
     }
@@ -130,17 +132,13 @@ module.exports = class YouTubeDownloader {
 
     switch (this.engine) {
       case 'myfreemp3':
-        await this.downloadSongWithMyfreemp3(title, playlistId);
-        break;
+        return await this.downloadSongWithMyfreemp3(title, playlistId);
       case 'zippyshare':
-        await this.downloadSongWithZippyshare(title, playlistId);
-        break;
+        return await this.downloadSongWithZippyshare(title, playlistId);
       case 'youtube':
-        await this.downloadSongWithYoutube(title, playlistId);
-        break;
+        return await this.downloadSongWithYoutube(title, playlistId);
       default:
-        await this.downloadSongWithMyfreemp3(title, playlistId);
-        break;
+        return await this.downloadSongWithMyfreemp3(title, playlistId);
     }
   }
 
@@ -214,11 +212,9 @@ module.exports = class YouTubeDownloader {
     const driver = await this._getDriver();
 
     await driver.get('https://my-free-mp3s.com/es');
-    await driver.wait(until.elementLocated(By.id('AO-hit')));
+    await driver.wait(until.elementLocated(By.id('footer')));
     await driver.findElement(By.id('query')).sendKeys(title);
-    await driver
-      .findElement(By.css('body > div.wrapper > div > div > div.input-group > span:nth-child(3) > button'))
-      .click();
+    await driver.findElement(By.css('btn.btn-primary.search')).click();
     await driver.wait(until.elementLocated(By.css('#result > div.list-group > li:nth-child(1)')));
     const results = await driver.findElements(By.css('.info-link'));
     const infoButtons = await driver.findElements(By.css('.btn.btn-primary.btn-xs.dropdown-toggle'));
@@ -321,6 +317,7 @@ module.exports = class YouTubeDownloader {
         data.push({ link, rate, duration, size, title: title.trim() });
       }
     }
+    this.log('RESULTS', data);
     const bestResult = this._getBestResult(data, title);
     if (!bestResult) {
       this.log('Sorry!!! It not was possible download link for'.red, title.yellow);
@@ -370,7 +367,7 @@ module.exports = class YouTubeDownloader {
       await driver.executeScript('arguments[0].click();', result);
 
       const tmpTitle = await result.findElement(By.css('div > div > div.legend-info.col-sm-10 > p')).getText();
-      if (tmpTitle && tmpTitle.trim() === title.trim()) {
+      if (tmpTitle && tmpTitle.replace(/(?!\w)./g, '') === title.replace(/(?!\w)./g, '')) {
         // const navbar = await driver.findElement(By.css('.navbar-collapse'));
         // await driver.executeScript("arguments[0].setAttribute('style','visibility:hidden;');", navbar);
         const mp3Button = await result.findElement(
@@ -382,8 +379,9 @@ module.exports = class YouTubeDownloader {
         this.log('Downloading best link'.yellow, link.gray);
 
         const downloadFolder = playlistId ? DOWNLOAD_FOLDER + '/' + playlistId : DOWNLOAD_FOLDER;
-        await this._downloadFile(link, this._capitalize(title), downloadFolder);
-        return;
+        const success = await this._downloadFile(link, this._capitalize(title), downloadFolder);
+        driver.quit();
+        return success;
       }
       this.log(tmpTitle.yellow, ' was discard'.red);
     }
@@ -391,6 +389,21 @@ module.exports = class YouTubeDownloader {
     this.log('Sorry!!! It not was possible download link for'.red, title.yellow);
     driver.close();
     return false;
+  }
+
+  async downloadZippyshareLink(link, title) {
+    const proxyIp = await this._getProxy();
+    const proxy = await this._getDriver(proxyIp);
+    await proxy.get(link);
+    await proxy.wait(until.elementsLocated(By.css('.download')));
+    await proxy.findElement(By.css('.download')).click();
+    this.log('Downloading '.gray + title.yellow + ' across proxy'.gray, proxyIp.green);
+
+    const pathToFile = this._getDownloadPath(title);
+    const downloadResult = this._fileIsDownloaded(pathToFile);
+
+    proxy.close();
+    return downloadResult;
   }
 
   _fileExists(pathToFile) {
@@ -582,7 +595,10 @@ module.exports = class YouTubeDownloader {
   async _downloadFile(url, title, downloadFolder = '') {
     const localPath = path.resolve(__dirname, downloadFolder);
     if (!fs.existsSync(localPath)) fs.mkdirSync(localPath);
-    const pathToFile = path.resolve(localPath, title + '.mp3');
+    const titleEncoded = title.replace(/[^\w\s]/gi, '');
+    this.log('Encoded title', titleEncoded);
+    const pathToFile = path.resolve(localPath, titleEncoded + '.mp3');
+    // const pathToFile = path.resolve(localPath, title + '.mp3');
 
     const preset = {
       format: colors.green(' {bar}') + colors.yellow(' {percentage}% | ETA: {eta}s | {value}/{total} Mb'),
@@ -591,7 +607,7 @@ module.exports = class YouTubeDownloader {
     };
     const progressBar = new progress.Bar({ barsize: 70 }, preset);
 
-    return axios
+    return await axios
       .get(url, { responseType: 'stream' })
       .then(response => {
         const totalBytes = response.headers['content-length'] / 1048576;
@@ -601,11 +617,13 @@ module.exports = class YouTubeDownloader {
         response.data.pipe(stream).on('finish', () => {
           progressBar.stop();
           this.log('\n\nSaved '.yellow + title.cyan + ' in\n'.yellow, pathToFile.cyan);
+          return true;
         });
       })
       .catch(error => {
         progressBar.stop();
         this.log('Error downloading file'.red, error.red);
+        return false;
       });
   }
 
@@ -617,7 +635,7 @@ module.exports = class YouTubeDownloader {
   }
 
   _capitalize(str) {
-    str = str.split(' ');
+    str = str.replace(/\s\s+/g, ' ').split(' ');
     for (var i = 0, x = str.length; i < x; i++) {
       str[i] = str[i][0].toUpperCase() + str[i].substr(1).toLowerCase();
     }

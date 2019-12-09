@@ -70,6 +70,18 @@ switch (args[0]) {
     downloader.importAndDownloadFile(args[1]);
     break;
 
+  case 'downloadZippyLink':
+    if (!args[1]) {
+      downloader.log('Error:'.bgRed, 'You must enter a valid zippy link'.red);
+      return;
+    }
+    if (!args[2]) {
+      downloader.log('Error:'.bgRed, 'You must enter a valid title'.red);
+      return;
+    }
+    downloader.downloadZippyshareLink(args[1], args[2]);
+    break;
+
   default:
     downloader.log('Error'.bgRed, 'Sorry, enter a valid operation'.red);
     downloader.log('Valid operations:'.yellow, '(playlist | song | export | download)'.cyan);
