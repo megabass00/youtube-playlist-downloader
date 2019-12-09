@@ -29,6 +29,7 @@ You must run the application from a console and you can use several operations:
 - **song**: you must indicate the title of a song in quotes (it is important) and it will be searched, analyzed and downloaded in the same way as with the playlist operation.
 - **export**: you must indicate a YouTube playlist ID to export the titles that will be saved in a json file.
 - **download**: you must indicate the path to a json file that contains an array of titles (you can use a file generated with the export operation) which will be downloaded in the same way as with the playlist operation.
+- **downloadZippyLink**: you must specify the zippy link and wished title and tool will download link across a proxy connection.
 
 To any of these operations you can add the following parameters options:
 
