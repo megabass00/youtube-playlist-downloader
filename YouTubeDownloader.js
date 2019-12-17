@@ -11,9 +11,11 @@ const isPortReachable = require('is-port-reachable');
 const By = webdriver.By;
 const until = webdriver.until;
 
-const YOUTUBE_APIKEY = 'AIzaSyC9LwtvczTv6gx34F8Sywzx7t2-w5KuZA4'; // you must replace this with your YouTube Api v3 key
+// const YOUTUBE_APIKEY = 'AIzaSyC9LwtvczTv6gx34F8Sywzx7t2-w5KuZA4'; // you must replace this with your YouTube Api v3 key
+const YOUTUBE_APIKEY = 'AIzaSyC9LwtvczTv6gx34F8Sywzx7t2-w5KuZA4';
 const DOWNLOAD_FOLDER = 'download';
 const EXPORT_FOLDER = 'export';
+const TIME_TO_WAIT = 10000; // 10 secs
 
 module.exports = class YouTubeDownloader {
   constructor({ engine, minRate, minSimilarity, noWindow, minimizeWindow, alwaysDownloadFiles, proxyAddress }) {
@@ -137,12 +139,14 @@ module.exports = class YouTubeDownloader {
         return await this.downloadSongWithZippyshare(title, playlistId);
       case 'youtube':
         return await this.downloadSongWithYoutube(title, playlistId);
+      case 'deezer':
+        return await this.downloadSongWithDeezer(title, playlistId);
       default:
         return await this.downloadSongWithMyfreemp3(title, playlistId);
     }
   }
 
-  async _getDriver(proxyAddress) {
+  async _getDriver({ proxyAddress, downloadFolder }) {
     let driver;
     var prefs = new webdriver.logging.Preferences();
     prefs.setLevel(webdriver.logging.Type.BROWSER, webdriver.logging.Level.OFF);
@@ -152,19 +156,25 @@ module.exports = class YouTubeDownloader {
     prefs.setLevel(webdriver.logging.Type.CLIENT, webdriver.logging.Level.OFF);
 
     const chrome = require('selenium-webdriver/chrome');
+    const localFolder = downloadFolder ? downloadFolder : path.resolve(__dirname, DOWNLOAD_FOLDER);
+    let options = new chrome.Options();
+    // options.setCapability('acceptSslCerts', true);
+    options.addArguments('--ignore-certificate-errors');
+    options.setUserPreferences({
+      'download.default_directory': localFolder,
+      'safebrowsing.enabled': false,
+    });
+
     if (this.noWindow) {
       this.log('Initializing webdriver in '.gray + 'background'.yellow + ' mode'.gray, ' ');
-      let options = new chrome.Options()
+      options
         .addArguments('--no-startup-window')
         .addArguments('--disable-web-security')
         .headless();
 
       if (proxyAddress) {
         this.log('Setting proxy in driver with IP'.gray, proxyAddress.yellow);
-        const downloadFolder = path.resolve(__dirname, DOWNLOAD_FOLDER);
-        const moreOptions = options
-          .addArguments(`--proxy-server=http://${proxyAddress}`)
-          .setUserPreferences({ 'download.default_directory': downloadFolder, 'safebrowsing.enabled': false });
+        const moreOptions = options.addArguments(`--proxy-server=http://${proxyAddress}`);
         driver = new webdriver.Builder()
           .forBrowser('chrome')
           .setChromeOptions(moreOptions)
@@ -179,20 +189,19 @@ module.exports = class YouTubeDownloader {
       }
     } else {
       this.log('Initializing webdriver in '.gray + 'foreground'.yellow + ' mode'.gray, ' ');
+
       if (proxyAddress) {
         this.log('Setting proxy in driver with IP'.gray, proxyAddress.red);
-        const downloadFolder = path.resolve(__dirname, DOWNLOAD_FOLDER);
-        const options = new chrome.Options()
-          .addArguments(`--proxy-server=http://${proxyAddress}`)
-          .setUserPreferences({ 'download.default_directory': downloadFolder, 'safebrowsing.enabled': false });
+        const moreOptions = options.addArguments(`--proxy-server=http://${proxyAddress}`);
         driver = new webdriver.Builder()
           .forBrowser('chrome')
-          .setChromeOptions(options)
+          .setChromeOptions(moreOptions)
           .setLoggingPrefs(prefs)
           .build();
       } else {
         driver = new webdriver.Builder()
           .forBrowser('chrome')
+          .setChromeOptions(options)
           .setLoggingPrefs(prefs)
           .build();
       }
@@ -209,12 +218,12 @@ module.exports = class YouTubeDownloader {
   }
 
   async downloadSongWithMyfreemp3(title, playlistId = null) {
-    const driver = await this._getDriver();
+    const driver = await this._getDriver({});
 
     await driver.get('https://my-free-mp3s.com/es');
     await driver.wait(until.elementLocated(By.id('footer')));
     await driver.findElement(By.id('query')).sendKeys(title);
-    await driver.findElement(By.css('btn.btn-primary.search')).click();
+    await driver.findElement(By.css('.btn.btn-primary.search')).click();
     await driver.wait(until.elementLocated(By.css('#result > div.list-group > li:nth-child(1)')));
     const results = await driver.findElements(By.css('.info-link'));
     const infoButtons = await driver.findElements(By.css('.btn.btn-primary.btn-xs.dropdown-toggle'));
@@ -236,7 +245,7 @@ module.exports = class YouTubeDownloader {
       await driver.executeScript('arguments[0].click();', infoButtons[i]);
       await driver.wait(until.elementIsVisible(links[i]));
       await driver
-        .wait(() => links[i].getText().then(value => value && value.length > 3), 10000)
+        .wait(() => links[i].getText().then(value => value && value.length > 3), TIME_TO_WAIT)
         .catch(() => this.log('Warning'.red, 'No was possible get info of link'.yellow));
 
       const link = await results[i].getAttribute('href');
@@ -270,7 +279,8 @@ module.exports = class YouTubeDownloader {
   }
 
   async downloadSongWithZippyshare(title, playlistId = null) {
-    const driver = await this._getDriver();
+    const downloadFolder = this._getDownloadFolder(playlistId);
+    const driver = await this._getDriver({ downloadFolder });
 
     await driver.get('https://www.zippysharedjs.com/');
     await driver.wait(until.elementLocated(By.id('search')));
@@ -329,7 +339,7 @@ module.exports = class YouTubeDownloader {
     driver.close();
 
     const proxyIp = await this._getProxy();
-    const proxy = await this._getDriver(proxyIp);
+    const proxy = await this._getDriver({ proxyAddress: proxyIp });
     await proxy.get(bestResult.link);
     await proxy.wait(until.elementsLocated(By.css('.download')));
     await proxy.findElement(By.css('.download')).click();
@@ -337,13 +347,12 @@ module.exports = class YouTubeDownloader {
 
     const pathToFile = this._getDownloadPath(title, playlistId);
     const downloadResult = this._fileIsDownloaded(pathToFile);
-
     proxy.close();
     return downloadResult;
   }
 
   async downloadSongWithYoutube(title, playlistId = null) {
-    const driver = await this._getDriver();
+    const driver = await this._getDriver({});
     this.minSimilarity = 100;
 
     await driver.get('https://mpgun.com/');
@@ -391,33 +400,123 @@ module.exports = class YouTubeDownloader {
     return false;
   }
 
-  async downloadZippyshareLink(link, title) {
+  async downloadSongWithDeezer(title, playlistId = null) {
+    const downloadFolder = this._getDownloadFolder(playlistId);
+    const pathToSave = this._getDownloadPath(title, playlistId);
+
+    const driver = await this._getDriver({ downloadFolder });
+    await driver.get('https://free-mp3-download.net/');
+    await driver.wait(until.elementLocated(By.id('q')));
+    await driver.findElement(By.id('q')).sendKeys(title);
+    await driver.findElement(By.id('snd')).click();
+    await driver.wait(until.elementLocated(By.id('results_t')), TIME_TO_WAIT).catch(() => {});
+
+    const results = await driver.findElements(By.css('#results_t > tr'));
+    if (!results || results.length === 0) {
+      this.log('No results founded for'.red, title.yellow);
+      driver.close();
+      return false;
+    }
+
+    this.log(`${results.length} results founded for`, title);
+    this.log('Searching the best link for download...'.gray, ' ');
+
+    let data = [];
+    for (let i = 0; i < results.length; i++) {
+      await driver.executeScript('arguments[0].click();', results[i]);
+
+      const link = await results[i].findElement(By.css('td:nth-child(3) > a')).getAttribute('href');
+      let duration = await results[i].findElement(By.css('td:nth-child(2)')).getText();
+      duration = this._getSecondsFromString(duration);
+      const rate = 320;
+      const size = ((rate / 8) * duration) / 1024;
+      const title = await results[i].findElement(By.css('td:nth-child(1)')).getText();
+      data.push({ link, rate, duration, size, title: title.trim() });
+    }
+
+    const bestResult = this._getBestResult(data, title);
+    if (!bestResult) {
+      this.log('Sorry!!! It not was possible download link for'.red, title.yellow);
+      driver.close();
+      return false;
+    }
+
+    this.log('Downloading best result'.yellow, bestResult);
+    await driver.get(bestResult.link);
+    await driver.wait(until.elementLocated(By.id('captcha')));
+    await driver.executeScript('arguments[0].scrollIntoView(true);', await driver.findElement(By.id('captcha')));
+    this.log('Enter CAPTCHA', 'Please, it needs you enter the captcha manually...');
+
+    const captchaIFrame = driver.findElement(By.css('#captcha > div > div > div > iframe'));
+    await driver.switchTo().frame(captchaIFrame);
+    await driver.wait(until.elementLocated(By.css('.recaptcha-checkbox-checked')));
+    this.log('CAPTCHA', 'checked');
+
+    await driver.switchTo().parentFrame();
+    await driver.findElement(By.css('.dl.btn.waves-effect.waves-light.blue.darken-4')).click();
+
+    await driver.wait(until.elementLocated(By.id('textPerc')));
+    this.log('Downloading '.gray + bestResult.title.yellow + '...'.gray);
+    const preload = await driver.findElement(By.id('textPerc'));
+    await driver.wait(driver => {
+      return preload.getText().then(text => text === 'Downloading (0%)');
+    }, TIME_TO_WAIT);
+
+    const downloadResult = this._fileIsDownloaded(pathToSave);
+    driver.close();
+    return downloadResult;
+  }
+
+  async downloadZippyshareLink(link) {
     const proxyIp = await this._getProxy();
-    const proxy = await this._getDriver(proxyIp);
+    const proxy = await this._getDriver({ proxyAddress: proxyIp });
     await proxy.get(link);
     await proxy.wait(until.elementsLocated(By.css('.download')));
     await proxy.findElement(By.css('.download')).click();
-    this.log('Downloading '.gray + title.yellow + ' across proxy'.gray, proxyIp.green);
+    this.log('Downloading zippy link '.gray + link.yellow + ' across proxy'.gray, proxyIp.green);
 
-    const pathToFile = this._getDownloadPath(title);
-    const downloadResult = this._fileIsDownloaded(pathToFile);
-
-    proxy.close();
-    return downloadResult;
+    this._sleep(3000);
+    const filename = this._getLastDownloadFileName();
+    if (filename) {
+      const pathToFile = this._getDownloadPath(filename);
+      const downloadResult = this._fileIsDownloaded(pathToFile, false);
+      proxy.close();
+      return downloadResult;
+    } else {
+      proxy.close();
+      return false;
+    }
   }
 
   _fileExists(pathToFile) {
     return fs.existsSync(pathToFile);
   }
 
-  _fileIsDownloaded(pathToFile) {
-    const timeOffset = 150000; // maximum time to wait in miliseconds
+  _getLastDownloadFileName(playlistId = null) {
+    let downloadFolder = this._getDownloadFolder(playlistId);
+    if (
+      downloadFolder.substring(downloadFolder.length - 1) != '/' ||
+      downloadFolder.substring(downloadFolder.length - 1) != '\\'
+    )
+      downloadFolder += '/';
+
+    const files = fs.readdirSync(downloadFolder);
+    let filename = files.find(file => path.extname(file).toLowerCase() === '.crdownload');
+    if (filename) filename = filename.replace('.mp3.crdownload', '');
+    this.log('Last download filename', filename);
+    return filename || null;
+  }
+
+  _fileIsDownloaded(pathToFile, timeOut = true) {
+    const timeOffset = timeOut ? TIME_TO_WAIT : 15 * 60 * 1000; // maximum time to wait in miliseconds
     const timeLimit = new Date().getTime() + timeOffset;
     const baseName = path.basename(pathToFile);
 
     let isDownloaded = false;
     let timeExceded = false;
-    if (!this._fileExists(pathToFile)) this.log(`Waiting until ${baseName} is downloaded...`.gray);
+    if (!this._fileExists(pathToFile))
+      this.log(`Waiting until ${baseName} is downloaded for ${this._getTimeStringFromMiliseconds(timeOffset)}...`.gray);
+
     while (!isDownloaded && !timeExceded) {
       if (this._fileExists(pathToFile)) {
         isDownloaded = true;
@@ -610,14 +709,16 @@ module.exports = class YouTubeDownloader {
     return await axios
       .get(url, { responseType: 'stream' })
       .then(response => {
-        const totalBytes = response.headers['content-length'] / 1048576;
-        progressBar.start(totalBytes.toFixed(1), 0);
-        const stream = fs.createWriteStream(pathToFile);
-        response.data.on('data', chunk => progressBar.increment(chunk.length / 1048576));
-        response.data.pipe(stream).on('finish', () => {
-          progressBar.stop();
-          this.log('\n\nSaved '.yellow + title.cyan + ' in\n'.yellow, pathToFile.cyan);
-          return true;
+        return new Promise(resolve => {
+          const totalBytes = response.headers['content-length'] / 1048576;
+          progressBar.start(totalBytes.toFixed(1), 0);
+          const stream = fs.createWriteStream(pathToFile);
+          response.data.on('data', chunk => progressBar.increment(chunk.length / 1048576));
+          response.data.pipe(stream).on('finish', () => {
+            progressBar.stop();
+            this.log('\n\nSaved '.yellow + title.cyan + ' in\n'.yellow, pathToFile.cyan);
+            return resolve(true);
+          });
         });
       })
       .catch(error => {
@@ -628,10 +729,16 @@ module.exports = class YouTubeDownloader {
   }
 
   _getDownloadPath(title, playlistId = null) {
-    const downloadFolder = playlistId ? DOWNLOAD_FOLDER + '/' + playlistId : DOWNLOAD_FOLDER;
-    const localPath = path.resolve(__dirname, downloadFolder);
+    const localPath = this._getDownloadFolder(playlistId);
+    if (!fs.existsSync(localPath)) fs.mkdirSync(localPath);
     const pathToFile = path.resolve(localPath, title + '.mp3');
     return pathToFile;
+  }
+
+  _getDownloadFolder(playlistId = null) {
+    const downloadFolder = playlistId ? DOWNLOAD_FOLDER + '/' + playlistId : DOWNLOAD_FOLDER;
+    const localFolder = path.resolve(__dirname, downloadFolder);
+    return localFolder;
   }
 
   _capitalize(str) {
@@ -642,9 +749,35 @@ module.exports = class YouTubeDownloader {
     return str.join(' ');
   }
 
+  _getSecondsFromString(strTime) {
+    if (!strTime || !strTime.includes(':')) return 0;
+    const a = strTime.split(':');
+    if (a.length === 3) {
+      return parseInt(a[0]) * 60 * 60 + parseInt(a[1]) * 60 + parseInt(a[2]);
+    } else if (a.length === 2) {
+      return parseInt(a[0]) * 60 + parseInt(a[1]);
+    } else {
+      return parseInt(a[0]);
+    }
+  }
+
+  _getTimeStringFromMiliseconds(miliseconds) {
+    const dateObj = new Date(miliseconds);
+    const hours = dateObj.getUTCHours();
+    const minutes = dateObj.getUTCMinutes();
+    const seconds = dateObj.getSeconds();
+
+    let timeString = '';
+    if (hours > 0) timeString += hours.toString().padStart(2, '0') + ' hours ';
+    if (minutes > 0) timeString += minutes.toString().padStart(2, '0') + ' minutes ';
+    if (seconds > 0) timeString += seconds.toString().padStart(2, '0') + ' secs ';
+    return timeString;
+  }
+
   log(key, value = ' ') {
     if (!key) key = 'NO KEY'.red;
     if (typeof value === 'object') value = JSON.stringify(value, null, 3).green;
+    if (typeof value === 'number') value = String(value);
     if (typeof value === 'boolean') value = !value ? 'false' : 'true';
     if (!value) value = 'UNDEFINED'.red;
     console.log(key.yellow, value.green);

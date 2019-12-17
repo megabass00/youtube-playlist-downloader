@@ -75,11 +75,7 @@ switch (args[0]) {
       downloader.log('Error:'.bgRed, 'You must enter a valid zippy link'.red);
       return;
     }
-    if (!args[2]) {
-      downloader.log('Error:'.bgRed, 'You must enter a valid title'.red);
-      return;
-    }
-    downloader.downloadZippyshareLink(args[1], args[2]);
+    downloader.downloadZippyshareLink(args[1]);
     break;
 
   default:
