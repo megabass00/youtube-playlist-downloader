@@ -35,7 +35,7 @@ To any of these operations you can add the following parameters options:
 
 - **rate**: indicates the minimum rate (in kbps) that will be accepted when analyzing the search results. Results with lower rates than indicated will be discarded. If this parameter is not specified, it will be set with a value of 320 kbps.
 - **similarity**: indicates the percentage of similarity in the titles of the results with the original title. Results with a similarity percentage lower than the specified one will be discarded. If this parameter is not specified, it will be set with a value of 80%.
-- **engine**: you can specify a download engine between diferent engines: _myfreemp3_ (default), _youtube_ or _zippyshare_ (this engine will connect by proxy since access is restricted for European countries).
+- **engine**: you can specify a download engine between diferent engines: _myfreemp3_ (default), _deezer_, _youtube_ or _zippyshare_ (this engine will connect by proxy since access is restricted for European countries). For _deezer_ engine is not possible run the tool with _no-window_ option why it is necessary enter _google captcha_ manually.
 - **proxy**: you can specify your custom proxy address to use it. Proxy is used to download songs from _zippyshare_ engine. If you don't specify any proxy address and you select this engine, the tool will get a anonymous proxy from [pubproxy.com](http:pubproxy.com) API.
 
 Also you can specify several options to the operations:
@@ -75,4 +75,7 @@ npm start playlist <your-playlist-ID> alwaysDownloadFiles similarity=90
 
 # Download single song with zippyshare engine in background mode with minimun rate to 320 kpbs across custom proxy
 npm start song "title-of-the-song" rate=320 engine=zippyshare proxy=<your-proxy-address> no-window
+
+# Download zippy link across proxy
+npm start downloadZippyLink <zippy-link> "title-of-song"
 ```
